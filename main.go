@@ -112,10 +112,13 @@ func main() {
 
 	// Configure CORS
 	c := cors.New(cors.Options{
-		AllowedOrigins: []string{"http://localhost:3000"},
-		AllowedMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders: []string{"*"},
-	})
+	AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+	AllowedHeaders:   []string{"*"},
+	AllowCredentials: true,
+	AllowOriginFunc: func(origin string) bool {
+		return strings.HasPrefix(origin, "http://192.168.0.") || origin == "http://localhost:3000"
+	},
+})
 
 	handler := c.Handler(r)
 

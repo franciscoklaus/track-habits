@@ -10,6 +10,21 @@ const HabitDetail = () => {
   
   const { entries, loading: entriesLoading, addEntry } = useHabitEntries(habitId);
   const { stats, loading: statsLoading } = useHabitStats(habitId);
+  
+  
+  const hasEntryToday = () => {
+    if (!entries || entries.length === 0) return false;
+    
+    const today = new Date();
+    const todayString = today.toDateString();
+    
+    return entries.some(entry => {
+      const entryDate = new Date(entry.completed_at);
+      return entryDate.toDateString() === todayString;
+    });
+  };
+
+  const canAddEntry = !hasEntryToday();
 
   const handleAddEntry = async () => {
     const notes = prompt('Adicionar notas (opcional):');
@@ -73,9 +88,14 @@ const HabitDetail = () => {
       <div className="mb-6">
         <button 
           onClick={handleAddEntry}
-          className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+          disabled={!canAddEntry}
+          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            canAddEntry 
+              ? 'bg-green-600 text-white hover:bg-green-700' 
+              : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+          }`}
         >
-          Adicionar Entrada
+          {canAddEntry ? 'Adicionar Entrada' : 'Já adicionado hoje'}
         </button>
       </div>
 
@@ -94,7 +114,7 @@ const HabitDetail = () => {
                     <div className="flex items-center mb-2">
                       <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
                       <span className="text-sm text-gray-600">
-                        {formatDate(entry.created_at)}
+                        {formatDate(entry.completed_at)}
                       </span>
                     </div>
                     {entry.notes && (
@@ -135,13 +155,13 @@ const HabitDetail = () => {
             <div>
               <span className="text-gray-600">Primeira entrada:</span>
               <div className="font-medium">
-                {formatDate(entries[entries.length - 1]?.created_at)}
+                {formatDate(entries[entries.length - 1]?.completed_at)}
               </div>
             </div>
             <div>
               <span className="text-gray-600">Última entrada:</span>
               <div className="font-medium">
-                {formatDate(entries[0]?.created_at)}
+                {formatDate(entries[0]?.completed_at)}
               </div>
             </div>
             <div>
@@ -154,13 +174,52 @@ const HabitDetail = () => {
               <span className="text-gray-600">Média por semana:</span>
               <div className="font-medium">
                 {stats.total_count}
-                {stats ? (stats.total_count / Math.max(1, Math.ceil((new Date() - new Date(entries[entries.length - 1]?.created_at)) / (7 * 24 * 60 * 60 * 1000)))).toFixed(1) : '0'}
+                {stats ? (stats.total_count / Math.max(1, Math.ceil((new Date() - new Date(entries[entries.length - 1]?.completed_at)) / (7 * 24 * 60 * 60 * 1000)))).toFixed(1) : '0'}
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Entrada Real */}
+      {entries.length > 0 && (
+  <div className="mt-8 bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+    <h3 className="text-lg font-semibold mb-4">📝 Suas Entradas Reais</h3>
+
+    {entries.map((entry) => (
+      <div
+        key={entry.id}
+        className="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-4"
+      >
+        <div className="flex items-start space-x-3">
+          <div className="flex-shrink-0">
+            <div className="w-3 h-3 bg-blue-500 rounded-full mt-2"></div>
+          </div>
+          <div>
+            <p className="font-medium text-blue-900">
+              {new Date(entry.completed_at).toLocaleDateString('pt-BR', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </p>
+            <p className="text-blue-700 text-sm mt-1">Notas: {entry.notes}</p>
+            <div className="mt-2 flex items-center space-x-4 text-xs text-blue-600">
+              <span>ID: {entry.id}</span>
+              <span>Hábito: {entry.habit_id}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    ))}
+  </div>
+)}
+
     </div>
+                
   );
 };
 

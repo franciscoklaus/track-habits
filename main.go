@@ -354,6 +354,102 @@ func getHabits(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(habits)
 }
 
+func calculateStreaks(db *sql.DB, habitID int) (int, int, error) {
+    // Buscar todas as datas de conclusão ordenadas
+    query := `
+        SELECT DATE(completed_at) as completion_date 
+        FROM habit_entries 
+        WHERE habit_id = ? 
+        ORDER BY completion_date DESC
+    `
+    
+    rows, err := db.Query(query, habitID)
+    if err != nil {
+        return 0, 0, err
+    }
+    defer rows.Close()
+    
+    var dates []time.Time
+    for rows.Next() {
+        var dateStr string
+        if err := rows.Scan(&dateStr); err != nil {
+            return 0, 0, err
+        }
+        date, _ := time.Parse("2006-01-02", dateStr)
+        dates = append(dates, date)
+    }
+    
+    if len(dates) == 0 {
+        return 0, 0, nil
+    }
+    
+    // Calcular current streak
+    currentStreak := calculateCurrentStreak(dates)
+    
+    // Calcular longest streak
+    longestStreak := calculateLongestStreak(dates)
+    
+    return currentStreak, longestStreak, nil
+}
+
+func calculateCurrentStreak(dates []time.Time) int {
+    if len(dates) == 0 {
+        return 0
+    }
+    
+    today := time.Now().Truncate(24 * time.Hour)
+    yesterday := today.AddDate(0, 0, -1)
+    
+    // Se não foi feito hoje nem ontem, streak = 0
+    if !dates[0].Equal(today) && !dates[0].Equal(yesterday) {
+        return 0
+    }
+    
+    streak := 0
+    expectedDate := today
+    
+    // Se não foi feito hoje, começar de ontem
+    if !dates[0].Equal(today) {
+        expectedDate = yesterday
+    }
+    
+    for _, date := range dates {
+        if date.Equal(expectedDate) {
+            streak++
+            expectedDate = expectedDate.AddDate(0, 0, -1)
+        } else {
+            break
+        }
+    }
+    
+    return streak
+}
+
+func calculateLongestStreak(dates []time.Time) int {
+    if len(dates) == 0 {
+        return 0
+    }
+    
+    maxStreak := 1
+    currentStreak := 1
+    
+    for i := 1; i < len(dates); i++ {
+        // Verificar se a data atual é consecutiva à anterior
+        expectedDate := dates[i-1].AddDate(0, 0, -1)
+        
+        if dates[i].Equal(expectedDate) {
+            currentStreak++
+            if currentStreak > maxStreak {
+                maxStreak = currentStreak
+            }
+        } else {
+            currentStreak = 1
+        }
+    }
+    
+    return maxStreak
+}
+
 func createHabit(w http.ResponseWriter, r *http.Request) {
 	userID := getUserID(r)
 	
@@ -562,37 +658,44 @@ func createHabitEntry(w http.ResponseWriter, r *http.Request) {
 }
 
 func getHabitStats(w http.ResponseWriter, r *http.Request) {
-	userID := getUserID(r)
-	vars := mux.Vars(r)
-	habitID, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		http.Error(w, "Invalid habit ID", http.StatusBadRequest)
-		return
-	}
+    userID := getUserID(r)
+    vars := mux.Vars(r)
+    habitID, err := strconv.Atoi(vars["id"])
+    if err != nil {
+        http.Error(w, "Invalid habit ID", http.StatusBadRequest)
+        return
+    }
 
-	// Verify habit belongs to user
-	var count int
-	err = db.QueryRow("SELECT COUNT(*) FROM habits WHERE id = ? AND user_id = ?", habitID, userID).Scan(&count)
-	if err != nil || count == 0 {
-		http.Error(w, "Habit not found", http.StatusNotFound)
-		return
-	}
+    // Verificar se o hábito pertence ao usuário
+    var count int
+    err = db.QueryRow("SELECT COUNT(*) FROM habits WHERE id = ? AND user_id = ?", habitID, userID).Scan(&count)
+    if err != nil || count == 0 {
+        http.Error(w, "Habit not found", http.StatusNotFound)
+        return
+    }
 
-	var totalCount int
-	err = db.QueryRow("SELECT COUNT(*) FROM habit_entries WHERE habit_id = ?", habitID).Scan(&totalCount)
-	if err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)
-		return
-	}
+    // Contar total de entradas
+    var totalCount int
+    err = db.QueryRow("SELECT COUNT(*) FROM habit_entries WHERE habit_id = ?", habitID).Scan(&totalCount)
+    if err != nil {
+        http.Error(w, "Database error", http.StatusInternalServerError)
+        return
+    }
 
-	stats := HabitStats{
-		HabitID:    habitID,
-		TotalCount: totalCount,
-		// Simplified streak calculation - you can implement more complex logic
-		CurrentStreak: 0,
-		LongestStreak: 0,
-	}
+    // Calcular streaks
+    currentStreak, longestStreak, err := calculateStreaks(db, habitID)
+    if err != nil {
+        http.Error(w, "Error calculating streaks", http.StatusInternalServerError)
+        return
+    }
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
+    stats := HabitStats{
+        HabitID:       habitID,
+        TotalCount:    totalCount,
+        CurrentStreak: currentStreak,
+        LongestStreak: longestStreak,
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(stats)
 }

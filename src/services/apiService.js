@@ -151,6 +151,12 @@ class ApiService {
     });
   }
 
+  async deleteHabitEntry(habitId, entryId) {
+    return await this.request(`/habits/${habitId}/entries/${entryId}`, {
+      method: 'DELETE',
+    });
+  }
+
   // MÉTODOS DE ESTATÍSTICAS
   async getHabitStats(habitId) {
     return await this.request(`/habits/${habitId}/stats`);
@@ -285,7 +291,7 @@ export const useHabits = () => {
       const entry = await api.createHabitEntry(habitId, { notes });
       return entry;
     } catch (err) {
-      setError(err.message);
+      //setError(err.message);
       throw err;
     }
   };
@@ -322,7 +328,7 @@ export const useHabitEntries = (habitId) => {
       const data = await api.getHabitEntries(habitId);
       setEntries(data || []);
     } catch (err) {
-      setError(err.message);
+      //setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -334,7 +340,17 @@ export const useHabitEntries = (habitId) => {
       setEntries(prev => [newEntry, ...prev]);
       return newEntry;
     } catch (err) {
-      setError(err.message);
+      //setError(err.message);
+      throw err;
+    }
+  };
+
+  const deleteEntry = async (entryId) => {
+    try {
+      await api.deleteHabitEntry(habitId, entryId);
+      setEntries(prev => prev.filter(entry => entry.id !== entryId));
+    } catch (err) {
+      //setError(err.message);
       throw err;
     }
   };
@@ -349,6 +365,7 @@ export const useHabitEntries = (habitId) => {
     error,
     fetchEntries,
     addEntry,
+    deleteEntry,
   };
 };
 
@@ -368,7 +385,7 @@ export const useHabitStats = (habitId) => {
       const data = await api.getHabitStats(habitId);
       setStats(data);
     } catch (err) {
-      setError(err.message);
+      //setError(err.message);
     } finally {
       setLoading(false);
     }

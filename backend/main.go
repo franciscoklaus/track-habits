@@ -32,6 +32,13 @@ type Habit struct {
 	Description string    `json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
 	IsActive    bool      `json:"is_active"`
+	MultipleUpdate bool  `json:"multipleUpdate"`
+	Category    string    `json:"category"`
+	Icon        string    `json:"icon"`
+	Goal        int       `json:"goal"`
+	GoalType    string    `json:"goal_type"` // "streak", "count", "weekly", "monthly"
+	ReminderEnabled bool  `json:"reminder_enabled"`
+	ReminderTime string   `json:"reminder_time"` // HH:MM format
 }
 
 type HabitEntry struct {
@@ -108,6 +115,7 @@ func main() {
 	// Habit entry routes
 	protected.HandleFunc("/habits/{id}/entries", getHabitEntries).Methods("GET")
 	protected.HandleFunc("/habits/{id}/entries", createHabitEntry).Methods("POST")
+	protected.HandleFunc("/habits/{id}/entries/{entryId}", deleteHabitEntry).Methods("DELETE")
 	protected.HandleFunc("/habits/{id}/stats", getHabitStats).Methods("GET")
 
 	// Configure CORS
@@ -116,7 +124,7 @@ func main() {
 	AllowedHeaders:   []string{"*"},
 	AllowCredentials: true,
 	AllowOriginFunc: func(origin string) bool {
-		return strings.HasPrefix(origin, "http://192.168.0.") || origin == "http://localhost:3000"
+		return strings.HasPrefix(origin, "http://192.168.0.") || origin == "http://localhost:3000" || origin == "http://localhost:3001"
 	},
 })
 
@@ -145,6 +153,13 @@ func initDB() {
 		name VARCHAR(100) NOT NULL,
 		description TEXT,
 		is_active BOOLEAN DEFAULT TRUE,
+		multipleUpdate BOOLEAN DEFAULT FALSE,
+		category VARCHAR(50) DEFAULT 'geral',
+		icon VARCHAR(50) DEFAULT 'target',
+		goal INT DEFAULT 0,
+		goal_type VARCHAR(20) DEFAULT 'streak',
+		reminder_enabled BOOLEAN DEFAULT FALSE,
+		reminder_time VARCHAR(5) DEFAULT '09:00',
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 	)`
@@ -334,7 +349,7 @@ func getUserID(r *http.Request) int {
 func getHabits(w http.ResponseWriter, r *http.Request) {
 	userID := getUserID(r)
 	
-	query := "SELECT id, user_id, name, description, is_active, created_at FROM habits WHERE user_id = ? ORDER BY created_at DESC"
+	query := "SELECT id, user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time, created_at FROM habits WHERE user_id = ? ORDER BY created_at DESC"
 	rows, err := db.Query(query, userID)
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
@@ -345,7 +360,7 @@ func getHabits(w http.ResponseWriter, r *http.Request) {
 	var habits []Habit
 	for rows.Next() {
 		var habit Habit
-		err := rows.Scan(&habit.ID, &habit.UserID, &habit.Name, &habit.Description, &habit.IsActive, &habit.CreatedAt)
+		err := rows.Scan(&habit.ID, &habit.UserID, &habit.Name, &habit.Description, &habit.IsActive, &habit.MultipleUpdate, &habit.Category, &habit.Icon, &habit.Goal, &habit.GoalType, &habit.ReminderEnabled, &habit.ReminderTime, &habit.CreatedAt)
 		if err != nil {
 			http.Error(w, "Error scanning habits", http.StatusInternalServerError)
 			return
@@ -462,9 +477,27 @@ func createHabit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := "INSERT INTO habits (user_id, name, description, is_active) VALUES (?, ?, ?, ?)"
-	result, err := db.Exec(query, userID, habit.Name, habit.Description, true)
+	// Set default values if not provided
+	if habit.Category == "" {
+		habit.Category = "geral"
+	}
+	if habit.Icon == "" {
+		habit.Icon = "target"
+	}
+	if habit.GoalType == "" {
+		habit.GoalType = "streak"
+	}
+	if habit.ReminderTime == "" {
+		habit.ReminderTime = "09:00"
+	}
+
+	query := "INSERT INTO habits (user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	result, err := db.Exec(query, userID, habit.Name, habit.Description, true, habit.MultipleUpdate, habit.Category, habit.Icon, habit.Goal, habit.GoalType, habit.ReminderEnabled, habit.ReminderTime)
 	if err != nil {
+		log.Printf("Error creating habit: %v", err)
+		log.Printf("Query: %s", query)
+		log.Printf("Values: userID=%d, name=%s, description=%s, multipleUpdate=%v, category=%s, icon=%s, goal=%d, goal_type=%s, reminder_enabled=%v, reminder_time=%s", 
+			userID, habit.Name, habit.Description, habit.MultipleUpdate, habit.Category, habit.Icon, habit.Goal, habit.GoalType, habit.ReminderEnabled, habit.ReminderTime)
 		http.Error(w, "Error creating habit", http.StatusInternalServerError)
 		return
 	}
@@ -490,8 +523,8 @@ func getHabit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var habit Habit
-	query := "SELECT id, user_id, name, description, is_active, created_at FROM habits WHERE id = ? AND user_id = ?"
-	err = db.QueryRow(query, habitID, userID).Scan(&habit.ID, &habit.UserID, &habit.Name, &habit.Description, &habit.IsActive, &habit.CreatedAt)
+	query := "SELECT id, user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time, created_at FROM habits WHERE id = ? AND user_id = ?"
+	err = db.QueryRow(query, habitID, userID).Scan(&habit.ID, &habit.UserID, &habit.Name, &habit.Description, &habit.IsActive, &habit.MultipleUpdate, &habit.Category, &habit.Icon, &habit.Goal, &habit.GoalType, &habit.ReminderEnabled, &habit.ReminderTime, &habit.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Habit not found", http.StatusNotFound)
@@ -520,8 +553,8 @@ func updateHabit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := "UPDATE habits SET name = ?, description = ?, is_active = ? WHERE id = ? AND user_id = ?"
-	result, err := db.Exec(query, habit.Name, habit.Description, habit.IsActive, habitID, userID)
+	query := "UPDATE habits SET name = ?, description = ?, is_active = ?, multipleUpdate = ?, category = ?, icon = ?, goal = ?, goal_type = ?, reminder_enabled = ?, reminder_time = ? WHERE id = ? AND user_id = ?"
+	result, err := db.Exec(query, habit.Name, habit.Description, habit.IsActive, habit.MultipleUpdate, habit.Category, habit.Icon, habit.Goal, habit.GoalType, habit.ReminderEnabled, habit.ReminderTime, habitID, userID)
 	if err != nil {
 		http.Error(w, "Error updating habit", http.StatusInternalServerError)
 		return
@@ -626,6 +659,18 @@ func createHabitEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var habit Habit
+	query := "SELECT id, user_id, name, description, is_active, multipleUpdate, created_at FROM habits WHERE id = ? AND user_id = ?"
+	err = db.QueryRow(query, habitID, userID).Scan(&habit.ID, &habit.UserID, &habit.Name, &habit.Description, &habit.IsActive, &habit.MultipleUpdate, &habit.CreatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Habit not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
 	var entry HabitEntry
 	if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
@@ -633,18 +678,19 @@ func createHabitEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if already completed today
-	today := time.Now().Format("2006-01-02")
-	err = db.QueryRow("SELECT COUNT(*) FROM habit_entries WHERE habit_id = ? AND DATE(completed_at) = ?", habitID, today).Scan(&count)
-	if err == nil && count > 0 {
-		http.Error(w, "Habit already completed today", http.StatusConflict)
-		return
+	if !habit.MultipleUpdate {
+		today := time.Now().Format("2006-01-02")
+		err = db.QueryRow("SELECT COUNT(*) FROM habit_entries WHERE habit_id = ? AND DATE(completed_at) = ?", habitID, today).Scan(&count)
+		if err == nil && count > 0 {
+			http.Error(w, "Habit already completed today", http.StatusConflict)
+			return
+		}
 	}
-
 	if entry.CompletedAt.IsZero() {
 		entry.CompletedAt = time.Now()
 	}
-
-	query := "INSERT INTO habit_entries (habit_id, completed_at, notes) VALUES (?, ?, ?)"
+	
+	query = "INSERT INTO habit_entries (habit_id, completed_at, notes) VALUES (?, ?, ?)"
 	result, err := db.Exec(query, habitID, entry.CompletedAt, entry.Notes)
 	if err != nil {
 		http.Error(w, "Error creating entry", http.StatusInternalServerError)
@@ -701,4 +747,51 @@ func getHabitStats(w http.ResponseWriter, r *http.Request) {
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(stats)
+}
+
+func deleteHabitEntry(w http.ResponseWriter, r *http.Request) {
+    userID := getUserID(r)
+    vars := mux.Vars(r)
+    habitID, err := strconv.Atoi(vars["id"])
+    if err != nil {
+        http.Error(w, "Invalid habit ID", http.StatusBadRequest)
+        return
+    }
+    
+    entryID, err := strconv.Atoi(vars["entryId"])
+    if err != nil {
+        http.Error(w, "Invalid entry ID", http.StatusBadRequest)
+        return
+    }
+
+    // Verificar se o hábito pertence ao usuário
+    var count int
+    err = db.QueryRow("SELECT COUNT(*) FROM habits WHERE id = ? AND user_id = ?", habitID, userID).Scan(&count)
+    if err != nil || count == 0 {
+        http.Error(w, "Habit not found", http.StatusNotFound)
+        return
+    }
+
+    // Verificar se a entrada pertence ao hábito
+    err = db.QueryRow("SELECT COUNT(*) FROM habit_entries WHERE id = ? AND habit_id = ?", entryID, habitID).Scan(&count)
+    if err != nil || count == 0 {
+        http.Error(w, "Entry not found", http.StatusNotFound)
+        return
+    }
+
+    // Deletar a entrada
+    query := "DELETE FROM habit_entries WHERE id = ? AND habit_id = ?"
+    result, err := db.Exec(query, entryID, habitID)
+    if err != nil {
+        http.Error(w, "Error deleting entry", http.StatusInternalServerError)
+        return
+    }
+
+    rowsAffected, _ := result.RowsAffected()
+    if rowsAffected == 0 {
+        http.Error(w, "Entry not found", http.StatusNotFound)
+        return
+    }
+
+    w.WriteHeader(http.StatusNoContent)
 }

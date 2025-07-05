@@ -6,6 +6,8 @@ import Register from './components/Register';
 import Dashboard from './components/Dashboard';
 import HabitDetail from './components/HabitDetail';
 import './index.css'
+import './App.css';
+
 
 // Componente para rotas protegidas
 const ProtectedRoute = ({ children }) => {

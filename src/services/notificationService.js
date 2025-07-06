@@ -68,7 +68,7 @@ class NotificationService {
   // Agendar notificação para um horário específico
   scheduleNotification(habitId, habitName, time) {
     // Cancelar notificação anterior se existir
-    this.cancelNotification(habitId);
+    this.cancelNotification(habitId, time);
 
     const now = new Date();
     const [hours, minutes] = time.split(':').map(Number);
@@ -82,15 +82,16 @@ class NotificationService {
     }
 
     const delay = notificationTime.getTime() - now.getTime();
+    const notificationKey = `${habitId}-${time}`;
 
     const timeoutId = setTimeout(() => {
       this.sendNotification(
         `Lembrete: ${habitName}`,
         {
-          body: 'Não se esqueça de completar seu hábito hoje!',
+          body: `Hora de ${habitName.toLowerCase()}! Não se esqueça de completar seu hábito.`,
           icon: '/favicon.ico',
-          tag: `habit-${habitId}`,
-          data: { habitId, habitName }
+          tag: `habit-${habitId}-${time}`,
+          data: { habitId, habitName, time }
         }
       );
 
@@ -98,27 +99,69 @@ class NotificationService {
       this.scheduleNotification(habitId, habitName, time);
     }, delay);
 
-    this.scheduledNotifications.set(habitId, timeoutId);
+    this.scheduledNotifications.set(notificationKey, timeoutId);
 
     console.log(`Lembrete agendado para ${habitName} às ${time}`);
     return timeoutId;
   }
 
-  // Cancelar notificação agendada
-  cancelNotification(habitId) {
-    const timeoutId = this.scheduledNotifications.get(habitId);
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-      this.scheduledNotifications.delete(habitId);
-      console.log(`Lembrete cancelado para hábito ${habitId}`);
+  // Agendar múltiplos horários para um hábito
+  scheduleMultipleNotifications(habitId, habitName, times) {
+    // Cancelar todas as notificações do hábito primeiro
+    this.cancelHabitNotifications(habitId);
+    
+    // Agendar cada horário
+    times.forEach(time => {
+      this.scheduleNotification(habitId, habitName, time);
+    });
+  }
+
+  // Cancelar notificação agendada específica
+  cancelNotification(habitId, time = null) {
+    if (time) {
+      const notificationKey = `${habitId}-${time}`;
+      const timeoutId = this.scheduledNotifications.get(notificationKey);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        this.scheduledNotifications.delete(notificationKey);
+        console.log(`Lembrete cancelado para hábito ${habitId} às ${time}`);
+      }
+    } else {
+      // Cancelar todas as notificações do hábito (compatibilidade com versão anterior)
+      this.cancelHabitNotifications(habitId);
+    }
+  }
+
+  // Cancelar todas as notificações de um hábito
+  cancelHabitNotifications(habitId) {
+    const keysToDelete = [];
+    this.scheduledNotifications.forEach((timeoutId, key) => {
+      if (key.startsWith(`${habitId}-`)) {
+        clearTimeout(timeoutId);
+        keysToDelete.push(key);
+      }
+    });
+    
+    keysToDelete.forEach(key => {
+      this.scheduledNotifications.delete(key);
+    });
+    
+    if (keysToDelete.length > 0) {
+      console.log(`${keysToDelete.length} lembretes cancelados para hábito ${habitId}`);
     }
   }
 
   // Agendar todos os lembretes ativos
   scheduleAllReminders(habits) {
     habits.forEach(habit => {
-      if (habit.reminder_enabled && habit.reminder_time) {
-        this.scheduleNotification(habit.id, habit.name, habit.reminder_time);
+      if (habit.reminder_enabled) {
+        if (habit.reminder_times && habit.reminder_times.length > 0) {
+          // Usar múltiplos horários se disponível
+          this.scheduleMultipleNotifications(habit.id, habit.name, habit.reminder_times);
+        } else if (habit.reminder_time) {
+          // Fallback para horário único
+          this.scheduleNotification(habit.id, habit.name, habit.reminder_time);
+        }
       }
     });
   }

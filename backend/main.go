@@ -38,7 +38,8 @@ type Habit struct {
 	Goal        int       `json:"goal"`
 	GoalType    string    `json:"goal_type"` // "streak", "count", "weekly", "monthly"
 	ReminderEnabled bool  `json:"reminder_enabled"`
-	ReminderTime string   `json:"reminder_time"` // HH:MM format
+	ReminderTime string   `json:"reminder_time"` // HH:MM format (legacy)
+	ReminderTimes []string `json:"reminder_times"` // Array de horários HH:MM
 }
 
 type HabitEntry struct {
@@ -160,6 +161,7 @@ func initDB() {
 		goal_type VARCHAR(20) DEFAULT 'streak',
 		reminder_enabled BOOLEAN DEFAULT FALSE,
 		reminder_time VARCHAR(5) DEFAULT '09:00',
+		reminder_times TEXT,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 	)`
@@ -193,6 +195,24 @@ func hashPassword(password string) (string, error) {
 func checkPasswordHash(password, hash string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 	return err == nil
+}
+
+// Funções auxiliares para múltiplos horários de lembrete
+func reminderTimesToString(times []string) string {
+	if len(times) == 0 {
+		return ""
+	}
+	timesJSON, _ := json.Marshal(times)
+	return string(timesJSON)
+}
+
+func stringToReminderTimes(str string) []string {
+	if str == "" {
+		return []string{}
+	}
+	var times []string
+	json.Unmarshal([]byte(str), &times)
+	return times
 }
 
 func generateJWT(userID int) (string, error) {
@@ -349,7 +369,7 @@ func getUserID(r *http.Request) int {
 func getHabits(w http.ResponseWriter, r *http.Request) {
 	userID := getUserID(r)
 	
-	query := "SELECT id, user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time, created_at FROM habits WHERE user_id = ? ORDER BY created_at DESC"
+	query := "SELECT id, user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time, reminder_times, created_at FROM habits WHERE user_id = ? ORDER BY created_at DESC"
 	rows, err := db.Query(query, userID)
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
@@ -360,11 +380,28 @@ func getHabits(w http.ResponseWriter, r *http.Request) {
 	var habits []Habit
 	for rows.Next() {
 		var habit Habit
-		err := rows.Scan(&habit.ID, &habit.UserID, &habit.Name, &habit.Description, &habit.IsActive, &habit.MultipleUpdate, &habit.Category, &habit.Icon, &habit.Goal, &habit.GoalType, &habit.ReminderEnabled, &habit.ReminderTime, &habit.CreatedAt)
+		var reminderTimesStr sql.NullString
+		err := rows.Scan(&habit.ID, &habit.UserID, &habit.Name, &habit.Description, &habit.IsActive, &habit.MultipleUpdate, &habit.Category, &habit.Icon, &habit.Goal, &habit.GoalType, &habit.ReminderEnabled, &habit.ReminderTime, &reminderTimesStr, &habit.CreatedAt)
 		if err != nil {
 			http.Error(w, "Error scanning habits", http.StatusInternalServerError)
 			return
 		}
+		
+		// Converter reminder_times do banco para array
+		if reminderTimesStr.Valid && reminderTimesStr.String != "" {
+			habit.ReminderTimes = stringToReminderTimes(reminderTimesStr.String)
+		} else {
+			// Se não tem reminder_times, usar reminder_time como fallback
+			if habit.ReminderTime != "" {
+				habit.ReminderTimes = []string{habit.ReminderTime}
+			} else {
+				habit.ReminderTimes = []string{}
+			}
+		}
+		
+		fmt.Printf("Habit %d: reminder_time='%s', reminder_times_str='%s', final_reminder_times=%v\n", 
+			habit.ID, habit.ReminderTime, reminderTimesStr.String, habit.ReminderTimes)
+		
 		habits = append(habits, habit)
 	}
 
@@ -490,14 +527,24 @@ func createHabit(w http.ResponseWriter, r *http.Request) {
 	if habit.ReminderTime == "" {
 		habit.ReminderTime = "09:00"
 	}
+	
+	// Processar reminder_times
+	var reminderTimesStr string
+	if len(habit.ReminderTimes) > 0 {
+		reminderTimesStr = reminderTimesToString(habit.ReminderTimes)
+	} else if habit.ReminderTime != "" {
+		// Fallback para reminder_time se reminder_times estiver vazio
+		habit.ReminderTimes = []string{habit.ReminderTime}
+		reminderTimesStr = reminderTimesToString(habit.ReminderTimes)
+	}
 
-	query := "INSERT INTO habits (user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-	result, err := db.Exec(query, userID, habit.Name, habit.Description, true, habit.MultipleUpdate, habit.Category, habit.Icon, habit.Goal, habit.GoalType, habit.ReminderEnabled, habit.ReminderTime)
+	query := "INSERT INTO habits (user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time, reminder_times) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	result, err := db.Exec(query, userID, habit.Name, habit.Description, true, habit.MultipleUpdate, habit.Category, habit.Icon, habit.Goal, habit.GoalType, habit.ReminderEnabled, habit.ReminderTime, reminderTimesStr)
 	if err != nil {
 		log.Printf("Error creating habit: %v", err)
 		log.Printf("Query: %s", query)
-		log.Printf("Values: userID=%d, name=%s, description=%s, multipleUpdate=%v, category=%s, icon=%s, goal=%d, goal_type=%s, reminder_enabled=%v, reminder_time=%s", 
-			userID, habit.Name, habit.Description, habit.MultipleUpdate, habit.Category, habit.Icon, habit.Goal, habit.GoalType, habit.ReminderEnabled, habit.ReminderTime)
+		log.Printf("Values: userID=%d, name=%s, description=%s, multipleUpdate=%v, category=%s, icon=%s, goal=%d, goal_type=%s, reminder_enabled=%v, reminder_time=%s, reminder_times=%s", 
+			userID, habit.Name, habit.Description, habit.MultipleUpdate, habit.Category, habit.Icon, habit.Goal, habit.GoalType, habit.ReminderEnabled, habit.ReminderTime, reminderTimesStr)
 		http.Error(w, "Error creating habit", http.StatusInternalServerError)
 		return
 	}
@@ -523,8 +570,9 @@ func getHabit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var habit Habit
-	query := "SELECT id, user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time, created_at FROM habits WHERE id = ? AND user_id = ?"
-	err = db.QueryRow(query, habitID, userID).Scan(&habit.ID, &habit.UserID, &habit.Name, &habit.Description, &habit.IsActive, &habit.MultipleUpdate, &habit.Category, &habit.Icon, &habit.Goal, &habit.GoalType, &habit.ReminderEnabled, &habit.ReminderTime, &habit.CreatedAt)
+	query := "SELECT id, user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time, reminder_times, created_at FROM habits WHERE id = ? AND user_id = ?"
+	var reminderTimesStr sql.NullString
+	err = db.QueryRow(query, habitID, userID).Scan(&habit.ID, &habit.UserID, &habit.Name, &habit.Description, &habit.IsActive, &habit.MultipleUpdate, &habit.Category, &habit.Icon, &habit.Goal, &habit.GoalType, &habit.ReminderEnabled, &habit.ReminderTime, &reminderTimesStr, &habit.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Habit not found", http.StatusNotFound)
@@ -533,6 +581,21 @@ func getHabit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
+	
+	// Converter reminder_times do banco para array
+	if reminderTimesStr.Valid && reminderTimesStr.String != "" {
+		habit.ReminderTimes = stringToReminderTimes(reminderTimesStr.String)
+	} else {
+		// Se não tem reminder_times, usar reminder_time como fallback
+		if habit.ReminderTime != "" {
+			habit.ReminderTimes = []string{habit.ReminderTime}
+		} else {
+			habit.ReminderTimes = []string{}
+		}
+	}
+	
+	fmt.Printf("Single habit %d: reminder_time='%s', reminder_times_str='%s', final_reminder_times=%v\n", 
+		habit.ID, habit.ReminderTime, reminderTimesStr.String, habit.ReminderTimes)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(habit)
@@ -553,8 +616,18 @@ func updateHabit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	query := "UPDATE habits SET name = ?, description = ?, is_active = ?, multipleUpdate = ?, category = ?, icon = ?, goal = ?, goal_type = ?, reminder_enabled = ?, reminder_time = ? WHERE id = ? AND user_id = ?"
-	result, err := db.Exec(query, habit.Name, habit.Description, habit.IsActive, habit.MultipleUpdate, habit.Category, habit.Icon, habit.Goal, habit.GoalType, habit.ReminderEnabled, habit.ReminderTime, habitID, userID)
+	// Processar reminder_times
+	var reminderTimesStr string
+	if len(habit.ReminderTimes) > 0 {
+		reminderTimesStr = reminderTimesToString(habit.ReminderTimes)
+	} else if habit.ReminderTime != "" {
+		// Fallback para reminder_time se reminder_times estiver vazio
+		habit.ReminderTimes = []string{habit.ReminderTime}
+		reminderTimesStr = reminderTimesToString(habit.ReminderTimes)
+	}
+
+	query := "UPDATE habits SET name = ?, description = ?, is_active = ?, multipleUpdate = ?, category = ?, icon = ?, goal = ?, goal_type = ?, reminder_enabled = ?, reminder_time = ?, reminder_times = ? WHERE id = ? AND user_id = ?"
+	result, err := db.Exec(query, habit.Name, habit.Description, habit.IsActive, habit.MultipleUpdate, habit.Category, habit.Icon, habit.Goal, habit.GoalType, habit.ReminderEnabled, habit.ReminderTime, reminderTimesStr, habitID, userID)
 	if err != nil {
 		http.Error(w, "Error updating habit", http.StatusInternalServerError)
 		return

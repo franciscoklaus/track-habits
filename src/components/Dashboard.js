@@ -36,7 +36,7 @@ const GOAL_TYPES = [
 
 const Dashboard = () => {
   const { user, logout } = useApi();
-  const { habits, loading, error, createHabit, deleteHabit, completeHabit } = useHabits();
+  const { habits, loading, error, createHabit, deleteHabit, completeHabit, updateHabit } = useHabits();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newHabit, setNewHabit] = useState({ 
     name: '', 
@@ -47,27 +47,27 @@ const Dashboard = () => {
     goal: 0,
     goal_type: 'streak',
     reminder_enabled: false,
-    reminder_time: '09:00'
+    reminder_times: ['09:00'] // Array para múltiplos horários
   });
   const [messages, setMessages] = useState([]);
   const [habitEntries, setHabitEntries] = useState({});
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [habitToDelete, setHabitToDelete] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingHabit, setEditingHabit] = useState(null);
+  const [editHabitData, setEditHabitData] = useState({
+    name: '',
+    description: '',
+    multipleUpdate: false,
+    category: 'geral',
+    icon: 'target',
+    goal: 0,
+    goal_type: 'streak',
+    reminder_enabled: false,
+    reminder_times: ['09:00'] // Array para múltiplos horários
+  });
   const { api } = useApi();
   const [notificationPermission, setNotificationPermission] = useState('default');
-
-  // Função para testar notificações
-  const testNotification = async () => {
-    const success = await notificationService.testNotification();
-    if (success) {
-      setMessages(prev => [...prev, { type: 'success', text: 'Notificação de teste enviada!' }]);
-    } else {
-      setMessages(prev => [...prev, { type: 'error', text: 'Erro ao enviar notificação. Verifique as permissões.' }]);
-    }
-    setTimeout(() => {
-      setMessages(prev => prev.filter(msg => !msg.text.includes('Notificação de teste') && !msg.text.includes('Erro ao enviar notificação')));
-    }, 3000);
-  };
 
   // Verificar status da permissão de notificação
   useEffect(() => {
@@ -161,7 +161,7 @@ const Dashboard = () => {
         goal: 0,
         goal_type: 'streak',
         reminder_enabled: false,
-        reminder_time: '09:00'
+        reminder_times: ['09:00']
       });
       setShowCreateForm(false);
       setMessages(prev => [...prev, { type: 'success', text: 'Hábito criado com sucesso!' }]);
@@ -227,17 +227,188 @@ const Dashboard = () => {
     setHabitToDelete(null);
   };
 
-  // Fechar modal com Escape
+  // Funções para gerenciar múltiplos lembretes
+  const addReminderTime = (isEdit = false) => {
+    const currentData = isEdit ? editHabitData : newHabit;
+    const maxReminders = currentData.goal_type === 'count' ? Math.max(1, currentData.goal || 1) : 10; // Limite baseado na meta ou 10 para outros tipos
+    
+    if (currentData.reminder_times.length >= maxReminders) {
+      setMessages(prev => [...prev, { 
+        type: 'error', 
+        text: `Você pode adicionar no máximo ${maxReminders} lembrete${maxReminders > 1 ? 's' : ''} para esta meta.` 
+      }]);
+      setTimeout(() => {
+        setMessages(prev => prev.filter(msg => !msg.text.includes('pode adicionar no máximo')));
+      }, 3000);
+      return;
+    }
+
+    if (isEdit) {
+      setEditHabitData(prev => ({
+        ...prev,
+        reminder_times: [...prev.reminder_times, '09:00']
+      }));
+    } else {
+      setNewHabit(prev => ({
+        ...prev,
+        reminder_times: [...prev.reminder_times, '09:00']
+      }));
+    }
+  };
+
+  const removeReminderTime = (index, isEdit = false) => {
+    if (isEdit) {
+      setEditHabitData(prev => ({
+        ...prev,
+        reminder_times: prev.reminder_times.filter((_, i) => i !== index)
+      }));
+    } else {
+      setNewHabit(prev => ({
+        ...prev,
+        reminder_times: prev.reminder_times.filter((_, i) => i !== index)
+      }));
+    }
+  };
+
+  const updateReminderTime = (index, time, isEdit = false) => {
+    if (isEdit) {
+      setEditHabitData(prev => ({
+        ...prev,
+        reminder_times: prev.reminder_times.map((t, i) => i === index ? time : t)
+      }));
+    } else {
+      setNewHabit(prev => ({
+        ...prev,
+        reminder_times: prev.reminder_times.map((t, i) => i === index ? time : t)
+      }));
+    }
+  };
+
+  // Função para ajustar lembretes quando a meta muda
+  const adjustRemindersForGoal = (goalValue, goalType, isEdit = false) => {
+    if (goalType === 'count') {
+      const maxReminders = Math.max(1, goalValue || 1);
+      const currentData = isEdit ? editHabitData : newHabit;
+      
+      // Se temos mais lembretes do que a meta permite, reduzir
+      if (currentData.reminder_times.length > maxReminders) {
+        const adjustedTimes = currentData.reminder_times.slice(0, maxReminders);
+        
+        if (isEdit) {
+          setEditHabitData(prev => ({
+            ...prev,
+            reminder_times: adjustedTimes
+          }));
+        } else {
+          setNewHabit(prev => ({
+            ...prev,
+            reminder_times: adjustedTimes
+          }));
+        }
+        
+        setMessages(prev => [...prev, { 
+          type: 'success', 
+          text: `Lembretes ajustados para ${maxReminders} (limite da meta).` 
+        }]);
+        setTimeout(() => {
+          setMessages(prev => prev.filter(msg => !msg.text.includes('Lembretes ajustados')));
+        }, 3000);
+      }
+    }
+  };
+
+  // Funções para editar hábito
+  const handleEditHabit = (habit) => {
+    //console.log('=== DEBUGGING EDIT HABIT ===');
+    //console.log('Original habit object:', habit);
+    //console.log('habit.reminder_times:', habit.reminder_times);
+    //console.log('habit.reminder_time:', habit.reminder_time);
+    //console.log('typeof habit.reminder_times:', typeof habit.reminder_times);
+    //console.log('Array.isArray(habit.reminder_times):', Array.isArray(habit.reminder_times));
+    
+    setEditingHabit(habit);
+    
+    let reminderTimes;
+    if (habit.reminder_times && Array.isArray(habit.reminder_times) && habit.reminder_times.length > 0) {
+      reminderTimes = habit.reminder_times;
+    } else if (habit.reminder_time) {
+      reminderTimes = [habit.reminder_time];
+    } else {
+      reminderTimes = ['09:00'];
+    }
+    
+    console.log('Final reminderTimes to set:', reminderTimes);
+    
+    const editData = {
+      name: habit.name,
+      description: habit.description || '',
+      multipleUpdate: habit.multipleUpdate,
+      category: habit.category || 'geral',
+      icon: habit.icon || 'target',
+      goal: habit.goal || 0,
+      goal_type: habit.goal_type || 'streak',
+      reminder_enabled: habit.reminder_enabled || false,
+      reminder_times: reminderTimes
+    };
+    
+    console.log('Setting editHabitData to:', editData);
+    setEditHabitData(editData);
+    setShowEditModal(true);
+  };
+
+  const handleUpdateHabit = async (e) => {
+    e.preventDefault();
+    if (!editingHabit) return;
+
+    try {
+      await updateHabit(editingHabit.id, editHabitData);
+      setMessages(prev => [...prev, { type: 'success', text: 'Hábito atualizado com sucesso!' }]);
+      setTimeout(() => {
+        setMessages(prev => prev.filter(msg => msg.text !== 'Hábito atualizado com sucesso!'));
+      }, 3000);
+      setShowEditModal(false);
+      setEditingHabit(null);
+    } catch (err) {
+      setMessages(prev => [...prev, { type: 'error', text: 'Erro ao atualizar hábito: ' + err.message }]);
+      setTimeout(() => {
+        setMessages(prev => prev.filter(msg => msg.text.includes('Erro ao atualizar hábito')));
+      }, 3000);
+      console.error('Erro ao atualizar hábito:', err);
+    }
+  };
+
+  const cancelEditHabit = () => {
+    setShowEditModal(false);
+    setEditingHabit(null);
+    setEditHabitData({
+      name: '',
+      description: '',
+      multipleUpdate: false,
+      category: 'geral',
+      icon: 'target',
+      goal: 0,
+      goal_type: 'streak',
+      reminder_enabled: false,
+      reminder_times: ['09:00']
+    });
+  };
+
+  // Fechar modals com Escape
   useEffect(() => {
     const handleEscape = (event) => {
-      if (event.key === 'Escape' && showDeleteModal) {
-        cancelDeleteHabit();
+      if (event.key === 'Escape') {
+        if (showDeleteModal) {
+          cancelDeleteHabit();
+        }
+        if (showEditModal) {
+          cancelEditHabit();
+        }
       }
     };
 
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [showDeleteModal]);
+  }, [showDeleteModal, showEditModal]);
 
   // Função para buscar entradas de um hábito
   const fetchHabitEntries = async (habitId) => {
@@ -287,7 +458,9 @@ const Dashboard = () => {
       });
 
       // Agendar notificações para hábitos com lembretes ativos
-      const habitsWithReminders = habits.filter(habit => habit.reminder_enabled && habit.reminder_time);
+      const habitsWithReminders = habits.filter(habit => 
+        habit.reminder_enabled && (habit.reminder_times?.length > 0 || habit.reminder_time)
+      );
       if (habitsWithReminders.length > 0) {
         // Solicitar permissão na primeira vez
         notificationService.requestPermission().then(granted => {
@@ -313,35 +486,34 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto p-6">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-10">
+      <div className="max-w-7xl mx-auto p-4 sm:p-6">
+        {/* Mobile optimized header */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-8 sm:mb-10 space-y-4 sm:space-y-0">
           <div className="space-y-2">
-            <h1 className="text-4xl font-bold text-gray-800">
+            <h1 className="text-2xl sm:text-4xl font-bold text-gray-800">
               Meus Hábitos
             </h1>
-            <p className="text-lg text-gray-600">
+            <p className="text-base sm:text-lg text-gray-600">
               Olá, <span className="font-semibold text-gray-800">{user?.username}</span>
             </p>
           </div>
           
-          <div className="flex items-center gap-4">
-            {/* Status das Notificações */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+            {/* Status das Notificações - more compact on mobile */}
             <div className="flex items-center gap-2">
               <div className={`w-3 h-3 rounded-full ${
                 notificationPermission === 'granted' ? 'bg-green-500' : 
                 notificationPermission === 'denied' ? 'bg-red-500' : 'bg-yellow-500'
               }`}></div>
-              <span className="text-sm text-gray-600">
+              <span className="text-xs sm:text-sm text-gray-600">
                 {notificationPermission === 'granted' ? 'Notificações ativas' : 
                  notificationPermission === 'denied' ? 'Notificações bloqueadas' : 'Notificações pendentes'}
               </span>
-              
             </div>
             
             <button
               onClick={logout}
-              className="px-6 py-3 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-gray-300 rounded-lg transition-all duration-200"
+              className="px-4 sm:px-6 py-2 sm:py-3 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-gray-300 rounded-lg transition-all duration-200 w-full sm:w-auto text-center"
             >
               Sair
             </button>
@@ -365,24 +537,24 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
-        )}        {/* Botão criar hábito */}
-        <div className="mb-8">
+        )}        {/* Mobile optimized new habit button */}
+        <div className="mb-6 sm:mb-8">
           <button
             onClick={() => setShowCreateForm(!showCreateForm)}
-            className="bg-gray-800 text-white px-8 py-4 rounded-lg hover:bg-gray-700 transition-all duration-200 shadow-sm font-medium text-lg flex items-center space-x-2"
+            className="w-full sm:w-auto bg-gray-800 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-lg hover:bg-gray-700 transition-all duration-200 shadow-sm font-medium text-base sm:text-lg flex items-center justify-center space-x-2"
           >
-            <span className="text-xl">{showCreateForm ? '×' : '+'}</span>
+            <span className="text-lg sm:text-xl">{showCreateForm ? '×' : '+'}</span>
             <span>{showCreateForm ? 'Cancelar' : 'Novo Hábito'}</span>
           </button>
         </div>
         
-        {/* Formulário criar hábito */}
+        {/* Mobile optimized create form */}
         {showCreateForm && (
-          <div className="bg-white p-8 rounded-lg shadow-sm mb-8 border border-gray-200">
-            <h2 className="text-2xl font-bold mb-6 text-gray-800">
+          <div className="bg-white p-4 sm:p-8 rounded-lg shadow-sm mb-6 sm:mb-8 border border-gray-200">
+            <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-gray-800">
               Criar Novo Hábito
             </h2>
-            <form onSubmit={handleCreateHabit} className="space-y-6">
+            <form onSubmit={handleCreateHabit} className="space-y-4 sm:space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Hábito</label>
                 <input
@@ -470,7 +642,11 @@ const Dashboard = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Meta</label>
                     <select
                       value={newHabit.goal_type}
-                      onChange={(e) => setNewHabit(prev => ({ ...prev, goal_type: e.target.value }))}
+                      onChange={(e) => {
+                        const newGoalType = e.target.value;
+                        setNewHabit(prev => ({ ...prev, goal_type: newGoalType }));
+                        adjustRemindersForGoal(newHabit.goal, newGoalType, false);
+                      }}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200"
                     >
                       {GOAL_TYPES.map(type => (
@@ -484,7 +660,11 @@ const Dashboard = () => {
                       type="number"
                       min="0"
                       value={newHabit.goal}
-                      onChange={(e) => setNewHabit(prev => ({ ...prev, goal: parseInt(e.target.value) || 0 }))}
+                      onChange={(e) => {
+                        const newGoal = parseInt(e.target.value) || 0;
+                        setNewHabit(prev => ({ ...prev, goal: newGoal }));
+                        adjustRemindersForGoal(newGoal, newHabit.goal_type, false);
+                      }}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200"
                       placeholder="Ex: 7 (dias), 3 (vezes)"
                     />
@@ -528,15 +708,61 @@ const Dashboard = () => {
                 </div>
                 {newHabit.reminder_enabled && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Horário do Lembrete</label>
-                    <input
-                      type="time"
-                      value={newHabit.reminder_time}
-                      onChange={(e) => setNewHabit(prev => ({ ...prev, reminder_time: e.target.value }))}
-                      className="w-full md:w-auto px-4 py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200"
-                    />
-                    <p className="text-xs text-gray-500 mt-2">
-                      A notificação será exibida todos os dias neste horário.
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="block text-sm font-medium text-gray-700">
+                        {newHabit.goal_type === 'count' ? 'Horários dos Lembretes' : 'Horário do Lembrete'}
+                      </label>
+                      {newHabit.goal_type === 'count' && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">
+                            {newHabit.reminder_times.length}/{Math.max(1, newHabit.goal || 1)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => addReminderTime(false)}
+                            disabled={newHabit.reminder_times.length >= Math.max(1, newHabit.goal || 1)}
+                            className={`text-sm px-3 py-1 rounded-md transition-colors flex items-center gap-1 ${
+                              newHabit.reminder_times.length >= Math.max(1, newHabit.goal || 1)
+                                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                            }`}
+                          >
+                            <span>+</span> Adicionar Horário
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="space-y-3">
+                      {newHabit.reminder_times.map((time, index) => (
+                        <div key={index} className="flex items-center gap-3">
+                          <input
+                            type="time"
+                            value={time}
+                            onChange={(e) => updateReminderTime(index, e.target.value, false)}
+                            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200"
+                          />
+                          {newHabit.goal_type === 'count' && newHabit.reminder_times.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeReminderTime(index, false)}
+                              className="text-red-600 hover:text-red-800 p-2 hover:bg-red-50 rounded-md transition-colors"
+                              title="Remover horário"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <p className="text-xs text-gray-500 mt-3">
+                      {newHabit.goal_type === 'count' 
+                        ? `Para metas de "número de vezes por dia", você pode adicionar até ${Math.max(1, newHabit.goal || 1)} lembrete${Math.max(1, newHabit.goal || 1) > 1 ? 's' : ''} (um para cada vez que deseja realizar o hábito). ${newHabit.goal === 0 ? 'Defina um valor maior que 0 na meta para adicionar mais lembretes.' : ''}`
+                        : 'A notificação será exibida todos os dias neste horário.'
+                      }
                     </p>
                   </div>
                 )}
@@ -569,58 +795,62 @@ const Dashboard = () => {
           </div>
         )}
 
-        <div className="grid gap-8 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+        {/* Mobile optimized habits grid */}
+        <div className="grid gap-4 sm:gap-6 md:gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           {habits.map(habit => {
             const goalProgress = calculateGoalProgress(habit);
             const categoryLabel = CATEGORIES.find(cat => cat.value === habit.category)?.label || 'Geral';
             
             return (
             <div key={habit.id} className="group bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 overflow-hidden">
-              {/* Header do Card */}
-              <div className="p-6 pb-4">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1 pr-4">
-                    <div className="flex items-center gap-3 mb-3">
-                      <span className="text-2xl">{getIconEmoji(habit.icon)}</span>
-                      <div>
-                        <h3 className="text-lg font-bold text-gray-900 leading-tight">
+              {/* Mobile optimized card header */}
+              <div className="p-4 sm:p-6 pb-3 sm:pb-4">
+                <div className="flex items-start justify-between mb-3 sm:mb-4">
+                  <div className="flex-1 pr-2 sm:pr-4">
+                    <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                      <span className="text-xl sm:text-2xl">{getIconEmoji(habit.icon)}</span>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
                           {habit.name}
                         </h3>
                         <span className="text-xs text-gray-500 font-medium">{categoryLabel}</span>
                       </div>
                     </div>
                     {habit.description && (
-                      <p className="text-gray-600 text-sm leading-relaxed line-clamp-3">
+                      <p className="text-gray-600 text-xs sm:text-sm leading-relaxed line-clamp-2 sm:line-clamp-3">
                         {habit.description}
                       </p>
                     )}
                   </div>
                   
-                  {/* Status e Type Badges */}
-                  <div className='flex flex-col gap-2 flex-shrink-0'>
-                    <span className={`px-2.5 py-1 text-xs font-medium rounded-full text-center ${
+                  {/* Mobile optimized status badges */}
+                  <div className='flex flex-col gap-1 sm:gap-2 flex-shrink-0'>
+                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full text-center ${
                       habit.is_active 
                         ? 'bg-green-100 text-green-700 border border-green-200' 
                         : 'bg-gray-100 text-gray-600 border border-gray-200'
                     }`}>
                       {habit.is_active ? 'Ativo' : 'Inativo'}
                     </span>
-                    <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-center">
+                    <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-center">
                       {habit.multipleUpdate ? 'Múltiplo' : 'Diário'}
                     </span>
                     {habit.reminder_enabled && (
-                      <span className="px-2.5 py-1 text-xs font-medium rounded-full bg-purple-50 text-purple-700 border border-purple-200 text-center flex items-center gap-1">
-                        🔔 {habit.reminder_time}
+                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-purple-50 text-purple-700 border border-purple-200 text-center flex items-center justify-center gap-1">
+                        <span className="hidden sm:inline">🔔</span>
+                        <span className="text-xs">
+                          {habit.reminder_times ? habit.reminder_times.join(', ') : (habit.reminder_time || '09:00')}
+                        </span>
                       </span>
                     )}
                   </div>
                 </div>
 
-                {/* Barra de Progresso da Meta */}
+                {/* Mobile optimized goal progress */}
                 {goalProgress && (
-                  <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-100">
+                  <div className="mt-3 sm:mt-4 p-2 sm:p-3 bg-gray-50 rounded-lg border border-gray-100">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-sm font-medium text-gray-700">Meta: {goalProgress.current}/{goalProgress.target}</span>
+                      <span className="text-xs sm:text-sm font-medium text-gray-700">Meta: {goalProgress.current}/{goalProgress.target}</span>
                       <span className="text-xs text-gray-500">{Math.round(goalProgress.percentage)}%</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
@@ -636,14 +866,14 @@ const Dashboard = () => {
               {/* Divider */}
               <div className="border-t border-gray-100"></div>
 
-              {/* Actions */}
-              <div className="p-4 bg-gray-50/50">
-                <div className="flex gap-2">
-                  {/* Botão Principal - Completar */}
+              {/* Mobile optimized actions */}
+              <div className="p-3 sm:p-4 bg-gray-50/50">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  {/* Primary action button - full width on mobile */}
                   <button
                     onClick={() => handleCompleteHabit(habit.id)}
                     disabled={!canCompleteHabit(habit)}
-                    className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    className={`w-full sm:flex-1 px-3 sm:px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                       canCompleteHabit(habit)
                         ? 'bg-gray-900 text-white hover:bg-gray-800 shadow-sm hover:shadow-md transform hover:-translate-y-0.5'
                         : 'bg-gray-200 text-gray-500 cursor-not-allowed'
@@ -652,26 +882,38 @@ const Dashboard = () => {
                     {canCompleteHabit(habit) ? 'Completar' : 'Completado'}
                   </button>
                   
-                  {/* Botões Secundários */}
-                  <Link
-                    to={`/habit/${habit.id}`}
-                    className="px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 hover:shadow-sm"
-                    title="Ver detalhes"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                  </Link>
-                  
-                  <button
-                    onClick={() => handleDeleteHabit(habit.id)}
-                    className="px-4 py-2.5 bg-white text-red-600 border border-red-200 rounded-lg text-sm font-medium hover:bg-red-50 hover:border-red-300 transition-all duration-200 hover:shadow-sm"
-                    title="Excluir hábito"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+                  {/* Secondary buttons - responsive layout */}
+                  <div className="flex gap-2">
+                    <Link
+                      to={`/habit/${habit.id}`}
+                      className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 hover:shadow-sm flex items-center justify-center"
+                      title="Ver detalhes"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                    </Link>
+
+                    <button
+                      onClick={() => handleEditHabit(habit)}
+                      className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-white text-blue-600 border border-blue-200 rounded-lg text-sm font-medium hover:bg-blue-50 hover:border-blue-300 transition-all duration-200 hover:shadow-sm flex items-center justify-center"
+                      title="Editar hábito"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    
+                    <button
+                      onClick={() => handleDeleteHabit(habit.id)}
+                      className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-white text-red-600 border border-red-200 rounded-lg text-sm font-medium hover:bg-red-50 hover:border-red-300 transition-all duration-200 hover:shadow-sm flex items-center justify-center"
+                      title="Excluir hábito"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -704,43 +946,304 @@ const Dashboard = () => {
       )}
       </div>
       
-      {/* Modal de Confirmação de Exclusão */}
+      {/* Mobile optimized edit modal */}
+      {showEditModal && editingHabit && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4"
+          onClick={cancelEditHabit}
+        >
+          <div 
+            className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 sm:p-6">
+              <div className="flex items-center justify-between mb-4 sm:mb-6">
+                <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Editar Hábito</h2>
+                <button
+                  onClick={cancelEditHabit}
+                  className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+                >
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <form onSubmit={handleUpdateHabit} className="space-y-4 sm:space-y-6">
+                {/* Mobile optimized form fields */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Hábito</label>
+                  <input
+                    type="text"
+                    required
+                    value={editHabitData.name}
+                    onChange={(e) => setEditHabitData(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200 text-base"
+                    placeholder="Ex: Beber água, Exercitar-se, Ler..."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Descrição (Opcional)</label>
+                  <textarea
+                    value={editHabitData.description}
+                    onChange={(e) => setEditHabitData(prev => ({ ...prev, description: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200"
+                    rows="4"
+                    placeholder="Descreva seu hábito e seus objetivos..."
+                  />
+                </div>
+
+                {/* Múltiplas atualizações */}
+                <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+                  <div className="flex items-start">
+                    <label className="flex items-start cursor-pointer relative" htmlFor="edit-check-multiple">
+                      <input type="checkbox"
+                        checked={editHabitData.multipleUpdate}
+                        onChange={(e) => setEditHabitData(prev => ({ ...prev, multipleUpdate: e.target.checked }))}
+                        className="peer h-5 w-5 cursor-pointer transition-all appearance-none rounded border-2 border-gray-300 checked:bg-gray-800 checked:border-gray-800"
+                        id="edit-check-multiple" />
+                      <span className="absolute text-white opacity-0 peer-checked:opacity-100 top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"
+                          stroke="currentColor" strokeWidth="1">
+                          <path fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"></path>
+                        </svg>
+                      </span>
+                    </label>
+                    <label className="cursor-pointer ml-4 text-gray-700" htmlFor="edit-check-multiple">
+                      <div>
+                        <p className="font-medium text-lg text-gray-800">
+                          Múltiplas atualizações diárias
+                        </p>
+                        <p className="text-gray-600 mt-1">
+                          Permite completar este hábito mais de uma vez por dia.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+                
+                {/* Categoria e Ícone */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Categoria</label>
+                    <select
+                      value={editHabitData.category}
+                      onChange={(e) => setEditHabitData(prev => ({ ...prev, category: e.target.value }))}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200"
+                    >
+                      {CATEGORIES.map(cat => (
+                        <option key={cat.value} value={cat.value}>{cat.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Ícone</label>
+                    <select
+                      value={editHabitData.icon}
+                      onChange={(e) => setEditHabitData(prev => ({ ...prev, icon: e.target.value }))}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200"
+                    >
+                      {ICONS.map(icon => (
+                        <option key={icon.value} value={icon.value}>{icon.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Meta */}
+                <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+                  <h3 className="text-lg font-medium text-gray-800 mb-4">Meta (Opcional)</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Meta</label>
+                      <select
+                        value={editHabitData.goal_type}
+                        onChange={(e) => {
+                          const newGoalType = e.target.value;
+                          setEditHabitData(prev => ({ ...prev, goal_type: newGoalType }));
+                          adjustRemindersForGoal(editHabitData.goal, newGoalType, true);
+                        }}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200"
+                      >
+                        {GOAL_TYPES.map(type => (
+                          <option key={type.value} value={type.value}>{type.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Valor da Meta</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editHabitData.goal}
+                        onChange={(e) => {
+                          const newGoal = parseInt(e.target.value) || 0;
+                          setEditHabitData(prev => ({ ...prev, goal: newGoal }));
+                          adjustRemindersForGoal(newGoal, editHabitData.goal_type, true);
+                        }}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200"
+                        placeholder="Ex: 7 (dias), 3 (vezes)"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lembrete */}
+                <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+                  <div className="flex items-start mb-4">
+                    <label className="flex items-start cursor-pointer relative" htmlFor="edit-reminder-enabled">
+                      <input 
+                        type="checkbox"
+                        checked={editHabitData.reminder_enabled}
+                        onChange={(e) => setEditHabitData(prev => ({ ...prev, reminder_enabled: e.target.checked }))}
+                        className="peer h-5 w-5 cursor-pointer transition-all appearance-none rounded border-2 border-gray-300 checked:bg-gray-800 checked:border-gray-800"
+                        id="edit-reminder-enabled" 
+                      />
+                      <span className="absolute text-white opacity-0 peer-checked:opacity-100 top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"
+                          stroke="currentColor" strokeWidth="1">
+                          <path fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"></path>
+                        </svg>
+                      </span>
+                    </label>
+                    <label className="cursor-pointer ml-4 text-gray-700" htmlFor="edit-reminder-enabled">
+                      <div>
+                        <p className="font-medium text-lg text-gray-800">
+                          Ativar Lembrete
+                        </p>
+                        <p className="text-gray-600 mt-1">
+                          Receba uma notificação diária para lembrar do hábito.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                  
+                  {editHabitData.reminder_enabled && (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <label className="block text-sm font-medium text-gray-700">
+                          {editHabitData.goal_type === 'count' ? 'Horários dos Lembretes' : 'Horário do Lembrete'}
+                        </label>
+                        {editHabitData.goal_type === 'count' && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500">
+                              {editHabitData.reminder_times.length}/{Math.max(1, editHabitData.goal || 1)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => addReminderTime(true)}
+                              disabled={editHabitData.reminder_times.length >= Math.max(1, editHabitData.goal || 1)}
+                              className={`text-sm px-3 py-1 rounded-md transition-colors flex items-center gap-1 ${
+                                editHabitData.reminder_times.length >= Math.max(1, editHabitData.goal || 1)
+                                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                              }`}
+                            >
+                              <span>+</span> Adicionar Horário
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-3">
+                        {editHabitData.reminder_times.map((time, index) => (
+                          <div key={index} className="flex items-center gap-3">
+                            <input
+                              type="time"
+                              value={time}
+                              onChange={(e) => updateReminderTime(index, e.target.value, true)}
+                              className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200"
+                            />
+                            {editHabitData.goal_type === 'count' && editHabitData.reminder_times.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeReminderTime(index, true)}
+                                className="text-red-600 hover:text-red-800 p-2 hover:bg-red-50 rounded-md transition-colors"
+                                title="Remover horário"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      
+                      <p className="text-xs text-gray-500 mt-3">
+                        {editHabitData.goal_type === 'count' 
+                          ? `Para metas de "número de vezes por dia", você pode adicionar até ${Math.max(1, editHabitData.goal || 1)} lembrete${Math.max(1, editHabitData.goal || 1) > 1 ? 's' : ''} (um para cada vez que deseja realizar o hábito). ${editHabitData.goal === 0 ? 'Defina um valor maior que 0 na meta para adicionar mais lembretes.' : ''}`
+                          : 'A notificação será exibida todos os dias neste horário.'
+                        }
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Botões */}
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={cancelEditHabit}
+                    className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-all duration-200"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-3 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-all duration-200"
+                  >
+                    Salvar Alterações
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Mobile optimized delete confirmation modal */}
       {showDeleteModal && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4"
           onClick={cancelDeleteHabit}
         >
           <div 
-            className="bg-white rounded-xl shadow-xl max-w-md w-full"
+            className="bg-white rounded-xl shadow-xl w-full max-w-md"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <div className="flex items-center mb-4">
-                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mr-4">
-                  <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-red-100 rounded-full flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.5 0L4.268 16.5c-.77.833.192 2.5 1.732 2.5z" />
                   </svg>
                 </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Confirmar Exclusão</h3>
-                  <p className="text-sm text-gray-500">Esta ação não pode ser desfeita</p>
+                <div className="min-w-0">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Confirmar Exclusão</h3>
+                  <p className="text-xs sm:text-sm text-gray-500">Esta ação não pode ser desfeita</p>
                 </div>
               </div>
               
-              <p className="text-gray-700 mb-6">
+              <p className="text-sm sm:text-base text-gray-700 mb-4 sm:mb-6 leading-relaxed">
                 Tem certeza que deseja excluir o hábito <span className="font-semibold text-gray-900">"{habits.find(h => h.id === habitToDelete)?.name}"</span>? Todos os dados relacionados a ele serão perdidos permanentemente.
               </p>
               
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <button
                   onClick={cancelDeleteHabit}
-                  className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-all duration-200"
+                  className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-all duration-200 text-center"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={confirmDeleteHabit}
-                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-all duration-200"
+                  className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-all duration-200 text-center"
                 >
                   Excluir
                 </button>

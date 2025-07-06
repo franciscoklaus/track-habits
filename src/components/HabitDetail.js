@@ -356,63 +356,64 @@ const HabitDetail = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center">
+      <div className="max-w-6xl mx-auto p-4 sm:p-6">
+        {/* Mobile optimized header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 sm:mb-8 space-y-4 sm:space-y-0">
+          <div className="flex flex-col sm:flex-row sm:items-center space-y-4 sm:space-y-0">
             <button 
               onClick={() => navigate('/')}
-              className="bg-white text-gray-700 hover:text-gray-900 hover:bg-gray-100 border border-gray-300 px-6 py-3 rounded-lg font-medium transition-all duration-200 shadow-sm mr-6 flex items-center space-x-2"
+              className="self-start bg-white text-gray-700 hover:text-gray-900 hover:bg-gray-100 border border-gray-300 px-4 sm:px-6 py-2 sm:py-3 rounded-lg font-medium transition-all duration-200 shadow-sm sm:mr-6 flex items-center space-x-2 text-sm sm:text-base"
             >
               <span>←</span>
               <span>Voltar</span>
             </button>
-            <div>
-              <div className="flex items-center gap-4 mb-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-3 sm:gap-4 mb-2">
                 {habit?.icon && (
-                  <span className="text-4xl">{getIconEmoji(habit.icon)}</span>
+                  <span className="text-2xl sm:text-4xl flex-shrink-0">{getIconEmoji(habit.icon)}</span>
                 )}
-                <div>
-                  <h1 className="text-4xl font-bold text-gray-800">
+                <div className="min-w-0">
+                  <h1 className="text-2xl sm:text-4xl font-bold text-gray-800 leading-tight">
                     {habit?.name || 'Detalhes do Hábito'}
                   </h1>
                   {habit?.category && (
-                    <span className="text-sm text-gray-500 font-medium">
+                    <span className="text-xs sm:text-sm text-gray-500 font-medium">
                       {getCategoryLabel(habit.category)}
                     </span>
                   )}
                 </div>
               </div>
               {habit?.description && (
-                <p className="text-gray-600 mt-2 text-lg">{habit.description}</p>
+                <p className="text-gray-600 mt-2 text-sm sm:text-lg leading-relaxed">{habit.description}</p>
               )}
             </div>
           </div>
           
           {habit && (
-            <div className="flex flex-col items-end space-y-2">
-              <span className={`px-4 py-2 text-sm font-medium rounded-lg border ${
+            <div className="flex flex-row sm:flex-col items-start sm:items-end space-x-2 sm:space-x-0 sm:space-y-2">
+              <span className={`px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg border ${
                 habit.is_active 
                   ? 'bg-gray-100 text-gray-800 border-gray-300' 
                   : 'bg-gray-50 text-gray-600 border-gray-200'
               }`}>
                 {habit.is_active ? 'Ativo' : 'Inativo'}
               </span>
-              <span className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 border border-gray-300">
+              <span className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg bg-gray-100 text-gray-700 border border-gray-300">
                 {habit.multipleUpdate ? 'Múltiplas/dia' : 'Uma vez/dia'}
               </span>
               {habit.reminder_enabled && (
-                <span className="px-4 py-2 text-sm font-medium rounded-lg bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-2">
-                  🔔 {habit.reminder_time}
+                <span className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1 sm:gap-2">
+                  <span className="hidden sm:inline">🔔</span>
+                  <span>{habit.reminder_time}</span>
                 </span>
               )}
             </div>
           )}
         </div>
 
-        {/* Mensagens */}
+        {/* Mobile optimized messages */}
         {messages.length > 0 && (
-          <div className={`rounded-lg px-6 py-4 mb-8 shadow-sm border ${
+          <div className={`rounded-lg px-4 sm:px-6 py-3 sm:py-4 mb-6 sm:mb-8 shadow-sm border ${
             messages.some(msg => msg.type === 'error') 
               ? 'bg-red-50 border-red-200 text-red-700' 
               : 'bg-green-50 border-green-200 text-green-700'
@@ -420,7 +421,7 @@ const HabitDetail = () => {
             <div className="flex items-center">
               <div>
                 {messages.map((msg, index) => (
-                  <div key={index} className="mb-1 last:mb-0 font-medium">
+                  <div key={index} className="mb-1 last:mb-0 font-medium text-sm sm:text-base">
                     {msg.text}
                   </div>
                 ))}
@@ -429,24 +430,24 @@ const HabitDetail = () => {
           </div>
         )}
 
-        {/* Meta e Progresso */}
+        {/* Mobile optimized goal and progress section */}
         {habit && (() => {
           const goalProgress = calculateGoalProgress();
           return goalProgress && (
-            <div className="bg-white p-8 rounded-lg shadow-sm mb-8 border border-gray-200">
-              <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-3">
+            <div className="bg-white p-4 sm:p-8 rounded-lg shadow-sm mb-6 sm:mb-8 border border-gray-200">
+              <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-gray-800 flex items-center gap-2 sm:gap-3">
                 🎯 Meta do Hábito
               </h2>
               
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                {/* Informações da Meta */}
-                <div className="space-y-4">
-                  <div className="bg-gray-50 p-6 rounded-lg border border-gray-100">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-4">Configuração da Meta</h3>
-                    <div className="space-y-3">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Tipo de Meta:</span>
-                        <span className="font-medium text-gray-800">{getGoalTypeLabel(habit.goal_type)}</span>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8">
+                {/* Mobile optimized goal info */}
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="bg-gray-50 p-4 sm:p-6 rounded-lg border border-gray-100">
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3 sm:mb-4">Configuração da Meta</h3>
+                    <div className="space-y-2 sm:space-y-3">
+                      <div className="flex justify-between items-start">
+                        <span className="text-gray-600 text-sm sm:text-base">Tipo de Meta:</span>
+                        <span className="font-medium text-gray-800 text-sm sm:text-base text-right">{getGoalTypeLabel(habit.goal_type)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-600">Objetivo:</span>
@@ -564,34 +565,34 @@ const HabitDetail = () => {
               </div>
             </div>
           </div>
-        )}        {/* Adicionar entrada */}
-        <div className="mb-8">
+        )}        {/* Mobile optimized add entry button */}
+        <div className="mb-6 sm:mb-8">
           <button 
             onClick={handleAddEntry}
             disabled={!canAddEntry()}
-            className={`px-8 py-4 rounded-lg font-medium text-lg transition-all duration-200 shadow-sm border flex items-center space-x-3 ${
+            className={`w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 rounded-lg font-medium text-base sm:text-lg transition-all duration-200 shadow-sm border flex items-center justify-center space-x-2 sm:space-x-3 ${
               canAddEntry() 
                 ? 'bg-gray-800 text-white border-gray-800 hover:bg-gray-700' 
                 : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
             }`}
           >
-            <span className="text-xl">{canAddEntry() ? '+' : '✓'}</span>
+            <span className="text-lg sm:text-xl">{canAddEntry() ? '+' : '✓'}</span>
             <span>{canAddEntry() ? 'Adicionar Nova Entrada' : 'Já completado hoje'}</span>
           </button>
-        </div>        {/* Lista de entradas */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-8">
+        </div>        {/* Mobile optimized entries list */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-6 sm:mb-8">
           <div 
-            className="p-6 border-b border-gray-200 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors duration-200" 
+            className="p-4 sm:p-6 border-b border-gray-200 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors duration-200" 
             onClick={() => setIsEntriesExpanded(!isEntriesExpanded)}
           >
-            <h2 className="text-2xl font-bold text-gray-800">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800">
               Histórico de Entradas
             </h2>
             <div className="flex items-center space-x-2">
-              <span className="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg text-sm font-medium">
+              <span className="bg-gray-100 text-gray-700 px-2 sm:px-3 py-1 rounded-lg text-xs sm:text-sm font-medium">
                 {entries.length} entradas
               </span>
-              <span className={`text-xl transition-transform duration-200 ${isEntriesExpanded ? 'rotate-180' : ''}`}>
+              <span className={`text-lg sm:text-xl transition-transform duration-200 ${isEntriesExpanded ? 'rotate-180' : ''}`}>
                 ▼
               </span>
             </div>
@@ -602,33 +603,33 @@ const HabitDetail = () => {
             {entries.length > 0 ? (
               <div className="divide-y divide-gray-100">
                 {entries.map((entry, index) => (
-                  <div key={entry.id} className="p-6 hover:bg-gray-50 transition-colors duration-200">
+                  <div key={entry.id} className="p-4 sm:p-6 hover:bg-gray-50 transition-colors duration-200">
                     <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center mb-3">
-                          <div className="w-3 h-3 bg-gray-400 rounded-full mr-4"></div>
-                          <span className="text-lg font-medium text-gray-700">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center mb-2 sm:mb-3">
+                          <div className="w-2 h-2 sm:w-3 sm:h-3 bg-gray-400 rounded-full mr-3 sm:mr-4 flex-shrink-0"></div>
+                          <span className="text-base sm:text-lg font-medium text-gray-700">
                             {formatDate(entry.completed_at)}
                           </span>
                         </div>
                         {entry.notes && (
-                          <div className="ml-7">
-                            <p className="text-gray-600 bg-gray-50 border border-gray-200 p-4 rounded-lg">
+                          <div className="ml-5 sm:ml-7">
+                            <p className="text-gray-600 bg-gray-50 border border-gray-200 p-3 sm:p-4 rounded-lg text-sm sm:text-base">
                               {entry.notes}
                             </p>
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center space-x-3 ml-6">
-                        <span className="text-xs text-gray-500 bg-gray-100 px-3 py-1 rounded-lg font-medium">
+                      <div className="flex items-center space-x-2 sm:space-x-3 ml-3 sm:ml-6 flex-shrink-0">
+                        <span className="text-xs text-gray-500 bg-gray-100 px-2 sm:px-3 py-1 rounded-lg font-medium">
                           #{index + 1}
                         </span>
                         <button
                           onClick={() => handleDeleteEntry(entry.id, entry.completed_at)}
-                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
+                          className="p-1.5 sm:p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                           title="Deletar entrada"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
                         </button>
@@ -638,11 +639,11 @@ const HabitDetail = () => {
                 ))}
               </div>
             ) : (
-              <div className="p-12 text-center">
-                <div className="bg-gray-50 rounded-lg p-8 border border-gray-200">
-                  <div className="text-4xl mb-4 text-gray-400">📋</div>
-                  <h3 className="text-xl font-medium text-gray-700 mb-2">Nenhuma entrada encontrada</h3>
-                  <p className="text-gray-500">
+              <div className="p-6 sm:p-12 text-center">
+                <div className="bg-gray-50 rounded-lg p-6 sm:p-8 border border-gray-200">
+                  <div className="text-3xl sm:text-4xl mb-3 sm:mb-4 text-gray-400">📋</div>
+                  <h3 className="text-lg sm:text-xl font-medium text-gray-700 mb-2">Nenhuma entrada encontrada</h3>
+                  <p className="text-gray-500 text-sm sm:text-base">
                     Adicione sua primeira entrada para começar a acompanhar este hábito!
                   </p>
                 </div>
@@ -938,30 +939,30 @@ const HabitDetail = () => {
       </div>
       )}
       
-      {/* Modal de Adicionar Entrada */}
+      {/* Mobile optimized add entry modal */}
       {showAddModal && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4"
           onClick={cancelAddEntry}
         >
           <div 
-            className="bg-white rounded-xl shadow-xl max-w-md w-full"
+            className="bg-white rounded-xl shadow-xl w-full max-w-md"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <div className="flex items-center mb-4">
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mr-4">
-                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 rounded-full flex items-center justify-center mr-3 sm:mr-4 flex-shrink-0">
+                  <svg className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                   </svg>
                 </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Adicionar Entrada</h3>
-                  <p className="text-sm text-gray-500">Registre o cumprimento do seu hábito</p>
+                <div className="min-w-0">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Adicionar Entrada</h3>
+                  <p className="text-xs sm:text-sm text-gray-500">Registre o cumprimento do seu hábito</p>
                 </div>
               </div>
               
-              <div className="mb-6">
+              <div className="mb-4 sm:mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Notas (opcional)
                 </label>

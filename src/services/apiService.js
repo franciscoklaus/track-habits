@@ -108,7 +108,9 @@ class ApiService {
 
   // MÉTODOS DE HÁBITOS
   async getHabits() {
-    return await this.request('/habits');
+    const data = await this.request('/habits');
+    console.log('getHabits API response:', data); // Debug
+    return data;
   }
 
   async createHabit(habitData) {
@@ -246,6 +248,7 @@ export const useHabits = () => {
       setLoading(true);
       setError(null);
       const data = await api.getHabits();
+      console.log('Raw habits data from API:', data); // Debug
       setHabits(data || []);
     } catch (err) {
       setError(err.message);

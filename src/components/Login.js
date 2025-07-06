@@ -40,20 +40,20 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-xl shadow-sm border border-gray-200">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+      <div className="max-w-md w-full space-y-6 sm:space-y-8 p-6 sm:p-8 bg-white rounded-xl shadow-sm border border-gray-200">
         <div className="text-center">
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">Entrar</h2>
-          <p className="text-gray-600">Acesse sua conta para continuar</p>
+          <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Entrar</h2>
+          <p className="text-gray-600 text-sm sm:text-base">Acesse sua conta para continuar</p>
         </div>
         
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-            <span className="font-medium">{error}</span>
+          <div className="bg-red-50 border border-red-200 text-red-700 px-3 sm:px-4 py-2.5 sm:py-3 rounded-lg">
+            <span className="font-medium text-sm sm:text-base">{error}</span>
           </div>
         )}
 
-        <form className="space-y-6" onSubmit={handleSubmit}>
+        <form className="space-y-4 sm:space-y-6" onSubmit={handleSubmit}>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Email
@@ -64,7 +64,7 @@ const Login = () => {
               required
               value={credentials.email}
               onChange={handleChange}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200"
+              className="w-full px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200 text-base"
               placeholder="seu@email.com"
             />
           </div>
@@ -79,7 +79,7 @@ const Login = () => {
               required
               value={credentials.password}
               onChange={handleChange}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200"
+              className="w-full px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200 text-base"
               placeholder="••••••••"
             />
           </div>
@@ -87,16 +87,16 @@ const Login = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-gray-900 text-white py-3 px-4 rounded-lg font-medium hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+            className="w-full bg-gray-900 text-white py-2.5 sm:py-3 px-4 rounded-lg font-medium hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 text-base"
           >
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
 
-        <div className="text-center pt-4">
+        <div className="text-center pt-2 sm:pt-4">
           <Link 
             to="/register" 
-            className="text-gray-600 hover:text-gray-900 font-medium transition-colors duration-200"
+            className="text-gray-600 hover:text-gray-900 font-medium transition-colors duration-200 text-sm sm:text-base"
           >
             Não tem conta? Cadastre-se
           </Link>

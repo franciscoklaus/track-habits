@@ -218,7 +218,7 @@ func main() {
 	AllowedHeaders:   []string{"*"},
 	AllowCredentials: true,
 	AllowOriginFunc: func(origin string) bool {
-		return strings.HasPrefix(origin, "http://192.168.0.") || origin == "http://localhost:3000" || origin == "http://localhost:3001"
+		return strings.HasPrefix(origin, "http://192.168.0.") || origin == "http://localhost:3000" || origin == "http://localhost:3001" || origin == "http://3.18.106.151"
 	},
 })
 

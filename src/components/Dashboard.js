@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi, useHabits } from '../services/apiService';
 import notificationService from '../services/notificationService';
+import GoalCompletionModal from './GoalCompletionModal';
+import ActivityFeed from './ActivityFeed';
+import FriendsSidebar from './FriendsSidebar';
 
 // Constantes para categorias e ícones
 const CATEGORIES = [
@@ -34,9 +37,15 @@ const GOAL_TYPES = [
   { value: 'monthly', label: 'Vezes por mês' }
 ];
 
+const VISIBILITY_OPTIONS = [
+  { value: 'public', label: '🌍 Público' },
+  { value: 'friends', label: '👥 Apenas amigos' },
+  { value: 'private', label: '🔒 Privado' }
+];
+
 const Dashboard = () => {
   const { user, logout } = useApi();
-  const { habits, loading, error, createHabit, deleteHabit, completeHabit, updateHabit } = useHabits();
+  const { habits, loading, error, createHabit, deleteHabit, completeHabit, updateHabit, fetchHabits } = useHabits();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newHabit, setNewHabit] = useState({ 
     name: '', 
@@ -47,7 +56,8 @@ const Dashboard = () => {
     goal: 0,
     goal_type: 'streak',
     reminder_enabled: false,
-    reminder_times: ['09:00'] // Array para múltiplos horários
+    reminder_times: ['09:00'], // Array para múltiplos horários
+    visibility: 'public' // 'public', 'private', 'friends'
   });
   const [messages, setMessages] = useState([]);
   const [habitEntries, setHabitEntries] = useState({});
@@ -64,10 +74,26 @@ const Dashboard = () => {
     goal: 0,
     goal_type: 'streak',
     reminder_enabled: false,
-    reminder_times: ['09:00'] // Array para múltiplos horários
+    reminder_times: ['09:00'], // Array para múltiplos horários
+    visibility: 'public' // 'public', 'private', 'friends'
   });
   const { api } = useApi();
   const [notificationPermission, setNotificationPermission] = useState('default');
+  
+  // Estados para gerenciamento de metas
+  const [goalCompletionModal, setGoalCompletionModal] = useState({
+    isOpen: false,
+    habitId: null,
+    habitName: '',
+    goalStatus: null
+  });
+  const [checkedHabits, setCheckedHabits] = useState(new Set());
+  const [goalStatuses, setGoalStatuses] = useState({}); // Armazenar status das metas do backend
+  
+  // Estados para feed de atividades e amigos
+  const [showActivityFeed, setShowActivityFeed] = useState(false);
+  const [showFriendsSidebar, setShowFriendsSidebar] = useState(false);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
 
   // Verificar status da permissão de notificação
   useEffect(() => {
@@ -90,10 +116,28 @@ const Dashboard = () => {
 
   // Função para calcular progresso da meta
   const calculateGoalProgress = (habit) => {
+    if (!habit.goal || habit.goal === 0) return null;
+
+    // Verificar se temos dados do backend para este hábito
+    const backendStatus = goalStatuses[habit.id];
+    if (backendStatus && backendStatus.has_goal) {
+      // Usar dados do backend (mais precisos, considerando resets)
+      const current = backendStatus.actual_count || 0;
+      const target = backendStatus.target_count || habit.goal;
+      const percentage = Math.min((current / target) * 100, 100);
+      
+      return { 
+        current, 
+        target, 
+        percentage,
+        isResetState: current === 0 && backendStatus.goal_type !== 'streak', // Meta zerada após reset
+        backendData: true // Flag para indicar que usa dados do backend
+      };
+    }
+
+    // Fallback para cálculo local (manter compatibilidade)
     const entries = habitEntries[habit.id] || [];
     const today = new Date();
-    
-    if (!habit.goal || habit.goal === 0) return null;
 
     switch (habit.goal_type) {
       case 'count': {
@@ -148,6 +192,7 @@ const Dashboard = () => {
       }
     }
   };
+
   const handleCreateHabit = async (e) => {
     e.preventDefault();
     try {
@@ -161,7 +206,8 @@ const Dashboard = () => {
         goal: 0,
         goal_type: 'streak',
         reminder_enabled: false,
-        reminder_times: ['09:00']
+        reminder_times: ['09:00'],
+        visibility: 'public'
       });
       setShowCreateForm(false);
       setMessages(prev => [...prev, { type: 'success', text: 'Hábito criado com sucesso!' }]);
@@ -182,6 +228,20 @@ const Dashboard = () => {
       await completeHabit(habitId);
       // Atualizar as entradas do hábito após completar
       await fetchHabitEntries(habitId);
+      
+      // Atualizar o status da meta para refletir as mudanças no frontend
+      await fetchGoalStatus(habitId);
+      
+      // Buscar o hábito para verificar se tem meta
+      const habit = habits.find(h => h.id === habitId);
+      if (habit && habit.goal && habit.goal > 0) {
+        // Verificar se a meta foi completada após esta atividade (para todos os tipos de meta)
+        setTimeout(async () => {
+          console.log(`Checking goal completion for habit ${habitId} after completing`);
+          await checkGoalCompletion(habitId, habit.name, true); // forceCheck = true para sempre verificar após completar
+        }, 500); // Pequeno delay para garantir que os dados foram atualizados
+      }
+      
       setMessages(prev => [...prev, { type: 'success', text: 'Hábito completado com sucesso!' }]);
       setTimeout(() => {
         setMessages(prev => prev.filter(msg => msg.text !== 'Hábito completado com sucesso!'));
@@ -348,7 +408,8 @@ const Dashboard = () => {
       goal: habit.goal || 0,
       goal_type: habit.goal_type || 'streak',
       reminder_enabled: habit.reminder_enabled || false,
-      reminder_times: reminderTimes
+      reminder_times: reminderTimes,
+      visibility: habit.visibility || 'public'
     };
     
     console.log('Setting editHabitData to:', editData);
@@ -389,7 +450,8 @@ const Dashboard = () => {
       goal: 0,
       goal_type: 'streak',
       reminder_enabled: false,
-      reminder_times: ['09:00']
+      reminder_times: ['09:00'],
+      visibility: 'public'
     });
   };
 
@@ -420,6 +482,36 @@ const Dashboard = () => {
     }
   };
 
+  // Função para buscar status da meta do backend
+  const fetchGoalStatus = useCallback(async (habitId) => {
+    try {
+      const goalStatus = await api.checkGoalCompletion(habitId);
+      setGoalStatuses(prev => ({ ...prev, [habitId]: goalStatus }));
+      return goalStatus;
+    } catch (err) {
+      console.error('Erro ao buscar status da meta:', err);
+      return null;
+    }
+  }, [api]);
+
+  // Função para buscar o número de solicitações de amizade pendentes
+  const fetchPendingRequestsCount = useCallback(async () => {
+    try {
+      const requests = await api.getFriendRequests();
+      // Verificar se requests é um array válido antes de filtrar
+      if (Array.isArray(requests)) {
+        // Contar apenas as solicitações recebidas (não enviadas)
+        const receivedRequests = requests.filter(request => request.type === 'received');
+        setPendingRequestsCount(receivedRequests.length);
+      } else {
+        setPendingRequestsCount(0);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar solicitações de amizade:', err);
+      setPendingRequestsCount(0);
+    }
+  }, [api]);
+
   // Função para verificar se um hábito foi completado hoje
   const isHabitCompletedToday = (habitId) => {
     const entries = habitEntries[habitId] || [];
@@ -441,6 +533,140 @@ const Dashboard = () => {
     return !isHabitCompletedToday(habit.id);
   };
 
+  // Função para verificar metas completadas
+  const checkGoalCompletion = useCallback(async (habitId, habitName, forceCheck = false) => {
+    if (!forceCheck && checkedHabits.has(habitId)) {
+      console.log(`Skipping goal check for habit ${habitId} - already checked this session`);
+      return; // Já verificado nesta sessão
+    }
+    
+    console.log(`=== CHECKING GOAL COMPLETION ===`);
+    console.log(`Habit ID: ${habitId}, Name: ${habitName}, Force Check: ${forceCheck}`);
+    
+    try {
+      const response = await api.checkGoalCompletion(habitId);
+      console.log('Goal completion response:', response);
+      
+      if (response && response.needs_renewal) {
+        console.log('Goal needs renewal - showing modal');
+        setGoalCompletionModal({
+          isOpen: true,
+          habitId,
+          habitName,
+          goalStatus: response
+        });
+      } else {
+        console.log('Goal does not need renewal:', {
+          has_goal: response?.has_goal,
+          goal_completed: response?.goal_completed,
+          already_recorded: response?.already_recorded
+        });
+      }
+      
+      // Marcar como verificado para evitar verificações repetidas (apenas se não foi forçado)
+      if (!forceCheck) {
+        setCheckedHabits(prev => {
+          const newSet = new Set([...prev, habitId]);
+          console.log('Added habitId to checkedHabits:', habitId);
+          console.log('Updated checkedHabits:', Array.from(newSet));
+          return newSet;
+        });
+      }
+    } catch (error) {
+      console.error('Error checking goal completion:', error);
+    }
+  }, [checkedHabits, api, setGoalCompletionModal, setCheckedHabits]);
+
+  // Função para registrar meta completada
+  const handleGoalCompletion = async (completionData) => {
+    try {
+      await api.createGoalCompletion(goalCompletionModal.habitId, completionData);
+      
+      // Mostrar notificação de sucesso
+      setMessages(prev => [...prev, { 
+        type: 'success', 
+        text: `🎉 Meta registrada! Parabéns pela conquista em "${goalCompletionModal.habitName}"!` 
+      }]);
+      setTimeout(() => {
+        setMessages(prev => prev.filter(msg => !msg.text.includes('Meta registrada')));
+      }, 5000);
+      
+    } catch (error) {
+      setMessages(prev => [...prev, { 
+        type: 'error', 
+        text: 'Erro ao registrar meta completada: ' + error.message 
+      }]);
+      setTimeout(() => {
+        setMessages(prev => prev.filter(msg => !msg.text.includes('Erro ao registrar meta')));
+      }, 3000);
+    }
+  };
+
+  // Função para lidar com o fechamento do modal e decisão de reset
+  const handleGoalModalClose = async (shouldReset) => {
+    console.log('=== HANDLE GOAL MODAL CLOSE ===');
+    console.log('shouldReset:', shouldReset);
+    console.log('goalCompletionModal:', goalCompletionModal);
+    
+    try {
+      if (shouldReset) {
+        // Resetar a meta no backend
+        const habitId = goalCompletionModal.habitId;
+        console.log('Calling resetGoal for habitId:', habitId);
+        
+        const resetResult = await api.resetGoal(habitId);
+        console.log('Reset result:', resetResult);
+        
+        // Atualizar o status da meta após o reset
+        const updatedGoalStatus = await fetchGoalStatus(habitId);
+        console.log('Updated goal status after reset:', updatedGoalStatus);
+        
+        // Recarregar os dados dos hábitos para atualizar o status
+        console.log('Fetching habits after reset...');
+        await fetchHabits();
+        console.log('Habits fetched successfully');
+        
+        setMessages(prev => [...prev, { 
+          type: 'success', 
+          text: `🔄 Meta resetada para "${goalCompletionModal.habitName}"! Continue registrando suas atividades.` 
+        }]);
+        setTimeout(() => {
+          setMessages(prev => prev.filter(msg => !msg.text.includes('Meta resetada')));
+        }, 5000);
+      } else {
+        // Meta mantida como completada - nenhuma ação adicional necessária
+        console.log('User chose NOT to reset the goal');
+        setMessages(prev => [...prev, { 
+          type: 'info', 
+          text: `✅ Meta de "${goalCompletionModal.habitName}" mantida como completada. Você pode reiniciar quando quiser.` 
+        }]);
+        setTimeout(() => {
+          setMessages(prev => prev.filter(msg => !msg.text.includes('mantida como completada')));
+        }, 5000);
+      }
+    } catch (error) {
+      console.error('Error handling goal reset decision:', error);
+      setMessages(prev => [...prev, { 
+        type: 'error', 
+        text: 'Erro ao processar decisão de reset: ' + error.message 
+      }]);
+      setTimeout(() => {
+        setMessages(prev => prev.filter(msg => !msg.text.includes('Erro ao processar')));
+      }, 3000);
+    } finally {
+      // Fechar o modal e limpar o estado de verificação para permitir nova verificação
+      console.log('Closing modal and clearing checked habits for habitId:', goalCompletionModal.habitId);
+      setGoalCompletionModal(prev => ({ ...prev, isOpen: false }));
+      setCheckedHabits(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(goalCompletionModal.habitId);
+        console.log('Cleared habitId from checkedHabits:', goalCompletionModal.habitId);
+        console.log('New checkedHabits:', Array.from(newSet));
+        return newSet;
+      });
+    }
+  };
+
   // Buscar entradas quando os hábitos carregarem
   useEffect(() => {
     const fetchHabitEntries = async (habitId) => {
@@ -453,8 +679,26 @@ const Dashboard = () => {
     };
 
     if (habits && habits.length > 0) {
-      habits.forEach(habit => {
+      habits.forEach(async (habit) => {
+        // Buscar entradas do hábito
         fetchHabitEntries(habit.id);
+        
+        // Buscar status da meta do backend se o hábito tem meta
+        if (habit.goal && habit.goal > 0) {
+          try {
+            const goalStatus = await fetchGoalStatus(habit.id);
+            
+            // Verificar metas completadas (apenas para hábitos com meta definida que não seja streak)
+            if (goalStatus && goalStatus.needs_renewal && habit.goal_type !== 'streak') {
+              // Aguardar um pouco para garantir que as entradas foram carregadas
+              setTimeout(() => {
+                checkGoalCompletion(habit.id, habit.name);
+              }, 1000);
+            }
+          } catch (error) {
+            console.error('Error fetching goal status for habit', habit.id, error);
+          }
+        }
       });
 
       // Agendar notificações para hábitos com lembretes ativos
@@ -478,7 +722,23 @@ const Dashboard = () => {
     return () => {
       notificationService.cancelAllReminders();
     };
-  }, [habits, api]);
+  }, [habits, api, checkGoalCompletion, fetchGoalStatus]);
+
+  // Buscar número de solicitações de amizade pendentes
+  useEffect(() => {
+    fetchPendingRequestsCount();
+  }, [fetchPendingRequestsCount]);
+
+  // Atualizar contagem quando o sidebar de amigos é fechado
+  useEffect(() => {
+    if (!showFriendsSidebar) {
+      // Pequeno delay para garantir que as mudanças foram processadas
+      const timer = setTimeout(() => {
+        fetchPendingRequestsCount();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [showFriendsSidebar, fetchPendingRequestsCount]);
 
   if (loading) {
     return <div className="flex justify-center items-center h-screen">Carregando...</div>;
@@ -499,6 +759,36 @@ const Dashboard = () => {
           </div>
           
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+            {/* Botões de navegação social */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowActivityFeed(true)}
+                className="px-3 sm:px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 border border-blue-200 rounded-lg transition-all duration-200 flex items-center gap-2"
+                title="Feed de Atividades"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+                </svg>
+                <span className="hidden sm:inline">Feed</span>
+              </button>
+              
+              <button
+                onClick={() => setShowFriendsSidebar(true)}
+                className="px-3 sm:px-4 py-2 text-sm font-medium text-green-600 hover:text-green-800 hover:bg-green-50 border border-green-200 rounded-lg transition-all duration-200 flex items-center gap-2 relative"
+                title="Amigos"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                </svg>
+                <span className="hidden sm:inline">Amigos</span>
+                {pendingRequestsCount > 0 && (
+                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-bold">
+                    {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}
+                  </span>
+                )}
+              </button>
+            </div>
+            
             {/* Status das Notificações - more compact on mobile */}
             <div className="flex items-center gap-2">
               <div className={`w-3 h-3 rounded-full ${
@@ -632,6 +922,25 @@ const Dashboard = () => {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              {/* Visibilidade */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Visibilidade</label>
+                <select
+                  value={newHabit.visibility}
+                  onChange={(e) => setNewHabit(prev => ({ ...prev, visibility: e.target.value }))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200"
+                >
+                  {VISIBILITY_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <p className="text-sm text-gray-500 mt-2">
+                  {newHabit.visibility === 'public' && 'Seus progressos serão visíveis para todos'}
+                  {newHabit.visibility === 'friends' && 'Seus progressos serão visíveis apenas para seus amigos'}
+                  {newHabit.visibility === 'private' && 'Seus progressos não aparecerão no feed de atividades'}
+                </p>
               </div>
 
               {/* Meta */}
@@ -850,15 +1159,20 @@ const Dashboard = () => {
                 {goalProgress && (
                   <div className="mt-3 sm:mt-4 p-2 sm:p-3 bg-gray-50 rounded-lg border border-gray-100">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-xs sm:text-sm font-medium text-gray-700">Meta: {goalProgress.current}/{goalProgress.target}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs sm:text-sm font-medium text-gray-700">Meta: {goalProgress.current}/{goalProgress.target}</span>
+                      </div>
                       <span className="text-xs text-gray-500">{Math.round(goalProgress.percentage)}%</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
                       <div 
-                        className="bg-gray-800 h-2 rounded-full transition-all duration-300" 
+                        className={`h-2 rounded-full transition-all duration-300 ${
+                          goalProgress.isResetState ? 'bg-blue-500' : 'bg-gray-800'
+                        }`}
                         style={{ width: `${goalProgress.percentage}%` }}
                       ></div>
                     </div>
+                    
                   </div>
                 )}
               </div>
@@ -1051,6 +1365,25 @@ const Dashboard = () => {
                       ))}
                     </select>
                   </div>
+                </div>
+
+                {/* Visibilidade */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Visibilidade</label>
+                  <select
+                    value={editHabitData.visibility}
+                    onChange={(e) => setEditHabitData(prev => ({ ...prev, visibility: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200"
+                  >
+                    {VISIBILITY_OPTIONS.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <p className="text-sm text-gray-500 mt-2">
+                    {editHabitData.visibility === 'public' && 'Seus progressos serão visíveis para todos'}
+                    {editHabitData.visibility === 'friends' && 'Seus progressos serão visíveis apenas para seus amigos'}
+                    {editHabitData.visibility === 'private' && 'Seus progressos não aparecerão no feed de atividades'}
+                  </p>
                 </div>
 
                 {/* Meta */}
@@ -1252,6 +1585,47 @@ const Dashboard = () => {
           </div>
         </div>
       )}
+      
+      {/* Modal de Meta Completada */}
+      <GoalCompletionModal
+        isOpen={goalCompletionModal.isOpen}
+        onClose={handleGoalModalClose}
+        onConfirm={handleGoalCompletion}
+        goalStatus={goalCompletionModal.goalStatus}
+        habitName={goalCompletionModal.habitName}
+      />
+      
+      {/* Modal do Feed de Atividades */}
+      {showActivityFeed && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[95vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Feed de Atividades</h2>
+              <button
+                onClick={() => setShowActivityFeed(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+              >
+                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto max-h-[calc(95vh-80px)]">
+              <ActivityFeed />
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Sidebar de Amigos */}
+      <FriendsSidebar 
+        isOpen={showFriendsSidebar} 
+        onClose={() => setShowFriendsSidebar(false)}
+        onFriendUpdate={() => {
+          // Recarregar dados se necessário
+          fetchHabits();
+        }}
+      />
     </div>
   );
 };

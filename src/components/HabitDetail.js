@@ -1,8 +1,9 @@
 // components/HabitDetail.js
 import {React, useState, useEffect} from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useHabitEntries, useHabitStats, useApi } from '../services/apiService';
+import { useHabitEntries, useHabitStats, useApi, useGoalManagement } from '../services/apiService';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import GoalHistorySection from './GoalHistorySection';
 
 // Constantes para categorias e ícones
 const CATEGORIES = [
@@ -44,6 +45,7 @@ const HabitDetail = () => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEntriesExpanded, setIsEntriesExpanded] = useState(false); // Começa expandido
   const [isStatsExpanded, setIsStatsExpanded] = useState(true); // Começa expandido
+  const [isGoalHistoryExpanded, setIsGoalHistoryExpanded] = useState(false); // Novo estado para histórico
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -55,6 +57,7 @@ const HabitDetail = () => {
 
   const { entries, loading: entriesLoading, addEntry, deleteEntry } = useHabitEntries(habitId);
   const { stats, loading: statsLoading, fetchStats } = useHabitStats(habitId);
+  const { completions, fetchCompletions } = useGoalManagement(habitId);
   const [activeChart, setActiveChart] = useState('daily');
 
   // Função para obter emoji do ícone
@@ -404,7 +407,12 @@ const HabitDetail = () => {
               {habit.reminder_enabled && (
                 <span className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium rounded-lg bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1 sm:gap-2">
                   <span className="hidden sm:inline">🔔</span>
-                  <span>{habit.reminder_time}</span>
+                  <span>
+                    {habit.reminder_times && Array.isArray(habit.reminder_times) && habit.reminder_times.length > 0
+                      ? habit.reminder_times.join(', ')
+                      : habit.reminder_time || '09:00'
+                    }
+                  </span>
                 </span>
               )}
             </div>
@@ -937,6 +945,16 @@ const HabitDetail = () => {
               </div>
             )}
       </div>
+      )}
+      
+      {/* Histórico de Metas */}
+      {habit && habit.goal && habit.goal > 0 && (
+        <GoalHistorySection
+          habitId={habitId}
+          goalCompletions={completions}
+          isExpanded={isGoalHistoryExpanded}
+          onToggle={() => setIsGoalHistoryExpanded(!isGoalHistoryExpanded)}
+        />
       )}
       
       {/* Mobile optimized add entry modal */}

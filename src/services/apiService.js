@@ -3,7 +3,7 @@ import { useState, useEffect, useContext, createContext } from 'react';
 // apiService.js
 class ApiService {
   constructor() {
-    this.baseURL = 'http://192.168.0.89:8080/api';
+    this.baseURL = 'http://localhost:8080/api';
     this.token = localStorage.getItem('authToken');
   }
 
@@ -110,7 +110,7 @@ class ApiService {
   async getHabits() {
     const data = await this.request('/habits');
     console.log('getHabits API response:', data); // Debug
-    return data;
+    return Array.isArray(data) ? data : [];
   }
 
   async createHabit(habitData) {
@@ -139,7 +139,8 @@ class ApiService {
 
   // MÉTODOS DE ENTRADAS DE HÁBITOS
   async getHabitEntries(habitId) {
-    return await this.request(`/habits/${habitId}/entries`);
+    const result = await this.request(`/habits/${habitId}/entries`);
+    return Array.isArray(result) ? result : [];
   }
 
   async createHabitEntry(habitId, entryData = {}) {
@@ -162,6 +163,110 @@ class ApiService {
   // MÉTODOS DE ESTATÍSTICAS
   async getHabitStats(habitId) {
     return await this.request(`/habits/${habitId}/stats`);
+  }
+
+  // MÉTODOS DE HISTÓRICO DE METAS
+  async getGoalCompletions(habitId) {
+    const result = await this.request(`/habits/${habitId}/goal-completions`);
+    return Array.isArray(result) ? result : [];
+  }
+
+  async createGoalCompletion(habitId, completionData) {
+    return await this.request(`/habits/${habitId}/goal-completions`, {
+      method: 'POST',
+      body: JSON.stringify(completionData),
+    });
+  }
+
+  async checkGoalCompletion(habitId) {
+    return await this.request(`/habits/${habitId}/check-goal`);
+  }
+
+  async resetGoal(habitId) {
+    return await this.request(`/habits/${habitId}/reset-goal`, {
+      method: 'POST',
+    });
+  }
+
+  // === SOCIAL FEATURES ===
+  
+  // Friends management
+  async sendFriendRequest(email) {
+    return this.request('/friends/request', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async getFriends() {
+    const result = await this.request('/friends');
+    return Array.isArray(result) ? result : [];
+  }
+
+  async getFriendRequests() {
+    const result = await this.request('/friends/requests');
+    return Array.isArray(result) ? result : [];
+  }
+
+  async acceptFriendRequest(requestId) {
+    return this.request(`/friends/${requestId}/accept`, {
+      method: 'PUT',
+    });
+  }
+
+  async removeFriend(friendshipId) {
+    return this.request(`/friends/${friendshipId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async cancelFriendRequest(requestId) {
+    return this.request(`/friends/${requestId}/cancel`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Activity feed
+  async getFeed(limit = 20, offset = 0) {
+    const result = await this.request(`/feed?limit=${limit}&offset=${offset}`);
+    return Array.isArray(result) ? result : [];
+  }
+
+  async reactToActivity(activityId, reactionType) {
+    return this.request(`/activities/${activityId}/react`, {
+      method: 'POST',
+      body: JSON.stringify({ reaction_type: reactionType }),
+    });
+  }
+
+  async removeReaction(activityId) {
+    return this.request(`/activities/${activityId}/react`, {
+      method: 'DELETE',
+    });
+  }
+
+  async commentOnActivity(activityId, comment) {
+    return this.request(`/activities/${activityId}/comment`, {
+      method: 'POST',
+      body: JSON.stringify({ comment }),
+    });
+  }
+
+  async getActivityComments(activityId) {
+    const result = await this.request(`/activities/${activityId}/comments`);
+    return Array.isArray(result) ? result : [];
+  }
+
+  // Create feed activity (internal method)
+  async createFeedActivity(activityType, habitId = null, metadata = {}) {
+    return this.request('/feed/create', {
+      method: 'POST',
+      body: JSON.stringify({
+        activity_type: activityType,
+        habit_id: habitId,
+        metadata,
+      }),
+    });
   }
 }
 
@@ -403,6 +508,82 @@ export const useHabitStats = (habitId) => {
     loading,
     error,
     fetchStats,
+  };
+};
+
+// Hook para verificação e histórico de metas
+export const useGoalManagement = (habitId) => {
+  const { api } = useApi();
+  const [goalStatus, setGoalStatus] = useState(null);
+  const [completions, setCompletions] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const checkGoalCompletion = async () => {
+    if (!habitId) return;
+    
+    try {
+      setLoading(true);
+      const status = await api.checkGoalCompletion(habitId);
+      setGoalStatus(status);
+      return status;
+    } catch (err) {
+      console.error('Error checking goal completion:', err);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchCompletions = async () => {
+    if (!habitId) return;
+    
+    try {
+      const data = await api.getGoalCompletions(habitId);
+      setCompletions(data || []);
+    } catch (err) {
+      console.error('Error fetching goal completions:', err);
+    }
+  };
+
+  const recordGoalCompletion = async (completionData) => {
+    try {
+      const newCompletion = await api.createGoalCompletion(habitId, completionData);
+      setCompletions(prev => [newCompletion, ...prev]);
+      // Atualizar status após gravar
+      await checkGoalCompletion();
+      return newCompletion;
+    } catch (err) {
+      console.error('Error recording goal completion:', err);
+      throw err;
+    }
+  };
+
+  const resetGoal = async () => {
+    try {
+      await api.resetGoal(habitId);
+      // Após resetar, buscar o status da meta novamente
+      await checkGoalCompletion();
+    } catch (err) {
+      console.error('Error resetting goal:', err);
+      throw err;
+    }
+  };
+
+  useEffect(() => {
+    if (habitId) {
+      checkGoalCompletion();
+      fetchCompletions();
+    }
+  }, [habitId]);
+
+  return {
+    goalStatus,
+    completions,
+    loading,
+    checkGoalCompletion,
+    fetchCompletions,
+    recordGoalCompletion,
+    resetGoal,
   };
 };
 

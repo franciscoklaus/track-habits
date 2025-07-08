@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -104,20 +105,32 @@ func getFriends(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(friends)
 }
 
-// Buscar solicitações de amizade pendentes
+// Buscar solicitações de amizade pendentes (recebidas e enviadas)
 func getFriendRequests(w http.ResponseWriter, r *http.Request) {
 	userID := getUserID(r)
 	
-	query := `
+	// Buscar solicitações recebidas (que você pode aceitar)
+	receivedQuery := `
 		SELECT f.id, f.user_id, f.friend_id, f.status, f.created_at, f.updated_at,
-			   u.id, u.username, u.email
+			   u.id, u.username, u.email, 'received' as request_type
 		FROM friendships f
 		JOIN users u ON u.id = f.user_id
 		WHERE f.friend_id = ? AND f.status = 'pending'
-		ORDER BY f.created_at DESC
 	`
 	
-	rows, err := db.Query(query, userID)
+	// Buscar solicitações enviadas (que estão aguardando aprovação)
+	sentQuery := `
+		SELECT f.id, f.user_id, f.friend_id, f.status, f.created_at, f.updated_at,
+			   u.id, u.username, u.email, 'sent' as request_type
+		FROM friendships f
+		JOIN users u ON u.id = f.friend_id
+		WHERE f.user_id = ? AND f.status = 'pending'
+	`
+	
+	// Unir ambas as queries
+	fullQuery := fmt.Sprintf("(%s) UNION (%s) ORDER BY created_at DESC", receivedQuery, sentQuery)
+	
+	rows, err := db.Query(fullQuery, userID, userID)
 	if err != nil {
 		log.Printf("Erro ao buscar solicitações: %v", err)
 		http.Error(w, `{"error": "Erro interno do servidor"}`, http.StatusInternalServerError)
@@ -125,18 +138,34 @@ func getFriendRequests(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 	
-	var requests []Friendship
+	var requests []map[string]interface{}
 	for rows.Next() {
 		var f Friendship
 		var u User
+		var requestType string
 		err := rows.Scan(&f.ID, &f.UserID, &f.FriendID, &f.Status, &f.CreatedAt, &f.UpdatedAt,
-						&u.ID, &u.Username, &u.Email)
+						&u.ID, &u.Username, &u.Email, &requestType)
 		if err != nil {
 			log.Printf("Erro ao escanear solicitação: %v", err)
 			continue
 		}
-		f.Friend = &u
-		requests = append(requests, f)
+		
+		request := map[string]interface{}{
+			"id":          f.ID,
+			"user_id":     f.UserID,
+			"friend_id":   f.FriendID,
+			"status":      f.Status,
+			"created_at":  f.CreatedAt,
+			"updated_at":  f.UpdatedAt,
+			"type":        requestType,
+			"friend": map[string]interface{}{
+				"id":       u.ID,
+				"username": u.Username,
+				"email":    u.Email,
+			},
+		}
+		
+		requests = append(requests, request)
 	}
 	
 	w.Header().Set("Content-Type", "application/json")
@@ -200,14 +229,57 @@ func removeFriend(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Amizade removida"})
 }
 
+// Cancelar solicitação de amizade enviada
+func cancelFriendRequest(w http.ResponseWriter, r *http.Request) {
+	userID := getUserID(r)
+	vars := mux.Vars(r)
+	friendshipID := vars["id"]
+	
+	// Verificar se a solicitação existe e foi enviada por este usuário
+	var existingUserID, existingFriendID int
+	err := db.QueryRow("SELECT user_id, friend_id FROM friendships WHERE id = ? AND user_id = ? AND status = 'pending'", 
+		friendshipID, userID).Scan(&existingUserID, &existingFriendID)
+	if err != nil {
+		http.Error(w, `{"error": "Solicitação de amizade não encontrada"}`, http.StatusNotFound)
+		return
+	}
+	
+	// Deletar a solicitação
+	_, err = db.Exec("DELETE FROM friendships WHERE id = ?", friendshipID)
+	if err != nil {
+		log.Printf("Erro ao cancelar solicitação: %v", err)
+		http.Error(w, `{"error": "Erro interno do servidor"}`, http.StatusInternalServerError)
+		return
+	}
+	
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Solicitação cancelada"})
+}
+
 // Criar atividade no feed
 func createFeedActivity(userID int, activityType string, habitID *int, goalCompletionID *int, metadata map[string]interface{}) error {
 	metadataJSON, _ := json.Marshal(metadata)
 	
+	// Determinar visibilidade baseada no hábito (se fornecido)
+	visibility := "friends" // padrão
+	if habitID != nil {
+		var habitVisibility sql.NullString
+		err := db.QueryRow("SELECT visibility FROM habits WHERE id = ?", *habitID).Scan(&habitVisibility)
+		if err == nil && habitVisibility.Valid {
+			visibility = habitVisibility.String
+		}
+	}
+	
+	// Se o hábito for privado, não criar atividade no feed
+	if visibility == "private" {
+		return nil
+	}
+	
 	_, err := db.Exec(`
 		INSERT INTO activity_feeds (user_id, activity_type, habit_id, goal_completion_id, metadata, visibility) 
-		VALUES (?, ?, ?, ?, ?, 'friends')
-	`, userID, activityType, habitID, goalCompletionID, metadataJSON)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, userID, activityType, habitID, goalCompletionID, metadataJSON, visibility)
 	
 	return err
 }
@@ -238,16 +310,17 @@ func getFeed(w http.ResponseWriter, r *http.Request) {
 		FROM activity_feeds af
 		JOIN users u ON u.id = af.user_id
 		LEFT JOIN habits h ON h.id = af.habit_id
-		WHERE (af.user_id = ? OR af.user_id IN (
+		WHERE af.user_id IN (
 			SELECT CASE WHEN f.user_id = ? THEN f.friend_id ELSE f.user_id END
 			FROM friendships f 
 			WHERE (f.user_id = ? OR f.friend_id = ?) AND f.status = 'accepted'
-		)) AND af.visibility IN ('public', 'friends')
+		) AND af.visibility IN ('public', 'friends')
+		AND (af.habit_id IS NULL OR h.visibility != 'private')
 		ORDER BY af.created_at DESC
 		LIMIT ? OFFSET ?
 	`
 	
-	rows, err := db.Query(query, userID, userID, userID, userID, limit, offset)
+	rows, err := db.Query(query, userID, userID, userID, limit, offset)
 	if err != nil {
 		log.Printf("Erro ao buscar feed: %v", err)
 		http.Error(w, `{"error": "Erro interno do servidor"}`, http.StatusInternalServerError)

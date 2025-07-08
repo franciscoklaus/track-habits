@@ -40,6 +40,7 @@ type Habit struct {
 	ReminderEnabled bool  `json:"reminder_enabled"`
 	ReminderTime string   `json:"reminder_time"` // HH:MM format (legacy)
 	ReminderTimes []string `json:"reminder_times"` // Array de horários HH:MM
+	Visibility  string    `json:"visibility"` // "public", "private", "friends"
 }
 
 type HabitEntry struct {
@@ -201,6 +202,7 @@ func main() {
 	protected.HandleFunc("/friends", getFriends).Methods("GET")
 	protected.HandleFunc("/friends/requests", getFriendRequests).Methods("GET")
 	protected.HandleFunc("/friends/{id}/accept", acceptFriendRequest).Methods("PUT")
+	protected.HandleFunc("/friends/{id}/cancel", cancelFriendRequest).Methods("DELETE")
 	protected.HandleFunc("/friends/{id}", removeFriend).Methods("DELETE")
 	
 	// Activity feed routes
@@ -348,6 +350,12 @@ func initDB() {
 	_, err := db.Exec("ALTER TABLE habits ADD COLUMN last_goal_reset TIMESTAMP NULL")
 	if err != nil && !strings.Contains(err.Error(), "Duplicate column name") {
 		log.Printf("Warning: Could not add last_goal_reset column: %v", err)
+	}
+
+	// Add visibility column if it doesn't exist (migration)
+	_, err = db.Exec("ALTER TABLE habits ADD COLUMN visibility ENUM('public', 'private', 'friends') DEFAULT 'public'")
+	if err != nil && !strings.Contains(err.Error(), "Duplicate column name") {
+		log.Printf("Warning: Could not add visibility column: %v", err)
 	}
 
 	fmt.Println("Database tables initialized successfully")
@@ -535,7 +543,7 @@ func getUserID(r *http.Request) int {
 func getHabits(w http.ResponseWriter, r *http.Request) {
 	userID := getUserID(r)
 	
-	query := "SELECT id, user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time, reminder_times, created_at FROM habits WHERE user_id = ? ORDER BY created_at DESC"
+	query := "SELECT id, user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time, reminder_times, visibility, created_at FROM habits WHERE user_id = ? ORDER BY created_at DESC"
 	rows, err := db.Query(query, userID)
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
@@ -547,10 +555,18 @@ func getHabits(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var habit Habit
 		var reminderTimesStr sql.NullString
-		err := rows.Scan(&habit.ID, &habit.UserID, &habit.Name, &habit.Description, &habit.IsActive, &habit.MultipleUpdate, &habit.Category, &habit.Icon, &habit.Goal, &habit.GoalType, &habit.ReminderEnabled, &habit.ReminderTime, &reminderTimesStr, &habit.CreatedAt)
+		var visibility sql.NullString
+		err := rows.Scan(&habit.ID, &habit.UserID, &habit.Name, &habit.Description, &habit.IsActive, &habit.MultipleUpdate, &habit.Category, &habit.Icon, &habit.Goal, &habit.GoalType, &habit.ReminderEnabled, &habit.ReminderTime, &reminderTimesStr, &visibility, &habit.CreatedAt)
 		if err != nil {
 			http.Error(w, "Error scanning habits", http.StatusInternalServerError)
 			return
+		}
+		
+		// Definir visibilidade padrão se estiver vazio
+		if visibility.Valid {
+			habit.Visibility = visibility.String
+		} else {
+			habit.Visibility = "public"
 		}
 		
 		// Converter reminder_times do banco para array
@@ -693,6 +709,9 @@ func createHabit(w http.ResponseWriter, r *http.Request) {
 	if habit.ReminderTime == "" {
 		habit.ReminderTime = "09:00"
 	}
+	if habit.Visibility == "" {
+		habit.Visibility = "public"
+	}
 	
 	// Processar reminder_times
 	var reminderTimesStr string
@@ -704,8 +723,8 @@ func createHabit(w http.ResponseWriter, r *http.Request) {
 		reminderTimesStr = reminderTimesToString(habit.ReminderTimes)
 	}
 
-	query := "INSERT INTO habits (user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time, reminder_times) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-	result, err := db.Exec(query, userID, habit.Name, habit.Description, true, habit.MultipleUpdate, habit.Category, habit.Icon, habit.Goal, habit.GoalType, habit.ReminderEnabled, habit.ReminderTime, reminderTimesStr)
+	query := "INSERT INTO habits (user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time, reminder_times, visibility) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+	result, err := db.Exec(query, userID, habit.Name, habit.Description, true, habit.MultipleUpdate, habit.Category, habit.Icon, habit.Goal, habit.GoalType, habit.ReminderEnabled, habit.ReminderTime, reminderTimesStr, habit.Visibility)
 	if err != nil {
 		log.Printf("Error creating habit: %v", err)
 		log.Printf("Query: %s", query)
@@ -736,9 +755,10 @@ func getHabit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var habit Habit
-	query := "SELECT id, user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time, reminder_times, created_at FROM habits WHERE id = ? AND user_id = ?"
+	query := "SELECT id, user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time, reminder_times, visibility, created_at FROM habits WHERE id = ? AND user_id = ?"
 	var reminderTimesStr sql.NullString
-	err = db.QueryRow(query, habitID, userID).Scan(&habit.ID, &habit.UserID, &habit.Name, &habit.Description, &habit.IsActive, &habit.MultipleUpdate, &habit.Category, &habit.Icon, &habit.Goal, &habit.GoalType, &habit.ReminderEnabled, &habit.ReminderTime, &reminderTimesStr, &habit.CreatedAt)
+	var visibility sql.NullString
+	err = db.QueryRow(query, habitID, userID).Scan(&habit.ID, &habit.UserID, &habit.Name, &habit.Description, &habit.IsActive, &habit.MultipleUpdate, &habit.Category, &habit.Icon, &habit.Goal, &habit.GoalType, &habit.ReminderEnabled, &habit.ReminderTime, &reminderTimesStr, &visibility, &habit.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Habit not found", http.StatusNotFound)
@@ -746,6 +766,13 @@ func getHabit(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
+	}
+	
+	// Definir visibilidade padrão se estiver vazio
+	if visibility.Valid {
+		habit.Visibility = visibility.String
+	} else {
+		habit.Visibility = "public"
 	}
 	
 	// Converter reminder_times do banco para array
@@ -792,8 +819,8 @@ func updateHabit(w http.ResponseWriter, r *http.Request) {
 		reminderTimesStr = reminderTimesToString(habit.ReminderTimes)
 	}
 
-	query := "UPDATE habits SET name = ?, description = ?, is_active = ?, multipleUpdate = ?, category = ?, icon = ?, goal = ?, goal_type = ?, reminder_enabled = ?, reminder_time = ?, reminder_times = ? WHERE id = ? AND user_id = ?"
-	result, err := db.Exec(query, habit.Name, habit.Description, habit.IsActive, habit.MultipleUpdate, habit.Category, habit.Icon, habit.Goal, habit.GoalType, habit.ReminderEnabled, habit.ReminderTime, reminderTimesStr, habitID, userID)
+	query := "UPDATE habits SET name = ?, description = ?, is_active = ?, multipleUpdate = ?, category = ?, icon = ?, goal = ?, goal_type = ?, reminder_enabled = ?, reminder_time = ?, reminder_times = ?, visibility = ? WHERE id = ? AND user_id = ?"
+	result, err := db.Exec(query, habit.Name, habit.Description, habit.IsActive, habit.MultipleUpdate, habit.Category, habit.Icon, habit.Goal, habit.GoalType, habit.ReminderEnabled, habit.ReminderTime, reminderTimesStr, habit.Visibility, habitID, userID)
 	if err != nil {
 		http.Error(w, "Error updating habit", http.StatusInternalServerError)
 		return

@@ -56,6 +56,18 @@ type HabitStats struct {
 	LongestStreak int `json:"longest_streak"`
 }
 
+type GoalCompletion struct {
+	ID          int       `json:"id"`
+	HabitID     int       `json:"habit_id"`
+	GoalType    string    `json:"goal_type"`
+	GoalValue   int       `json:"goal_value"`
+	CompletedAt time.Time `json:"completed_at"`
+	PeriodStart time.Time `json:"period_start"`
+	PeriodEnd   time.Time `json:"period_end"`
+	ActualCount int       `json:"actual_count"`
+	Notes       string    `json:"notes,omitempty"`
+}
+
 type LoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
@@ -70,6 +82,65 @@ type RegisterRequest struct {
 type AuthResponse struct {
 	Token string `json:"token"`
 	User  User   `json:"user"`
+}
+
+// Estruturas para sistema de amigos e feed
+type Friendship struct {
+	ID        int       `json:"id"`
+	UserID    int       `json:"user_id"`
+	FriendID  int       `json:"friend_id"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	// Dados do amigo
+	Friend *User `json:"friend,omitempty"`
+}
+
+type ActivityFeed struct {
+	ID               int                    `json:"id"`
+	UserID           int                    `json:"user_id"`
+	ActivityType     string                 `json:"activity_type"`
+	HabitID          *int                   `json:"habit_id"`
+	GoalCompletionID *int                   `json:"goal_completion_id"`
+	Metadata         map[string]interface{} `json:"metadata"`
+	Visibility       string                 `json:"visibility"`
+	CreatedAt        time.Time              `json:"created_at"`
+	// Dados relacionados
+	User         *User         `json:"user,omitempty"`
+	Habit        *Habit        `json:"habit,omitempty"`
+	ReactionCount map[string]int `json:"reaction_count,omitempty"`
+	UserReaction *string        `json:"user_reaction,omitempty"`
+	CommentCount int            `json:"comment_count,omitempty"`
+}
+
+type ActivityReaction struct {
+	ID           int       `json:"id"`
+	ActivityID   int       `json:"activity_id"`
+	UserID       int       `json:"user_id"`
+	ReactionType string    `json:"reaction_type"`
+	CreatedAt    time.Time `json:"created_at"`
+	User         *User     `json:"user,omitempty"`
+}
+
+type ActivityComment struct {
+	ID         int       `json:"id"`
+	ActivityID int       `json:"activity_id"`
+	UserID     int       `json:"user_id"`
+	Comment    string    `json:"comment"`
+	CreatedAt  time.Time `json:"created_at"`
+	User       *User     `json:"user,omitempty"`
+}
+
+type FriendRequest struct {
+	Email string `json:"email"`
+}
+
+type ReactionRequest struct {
+	ReactionType string `json:"reaction_type"`
+}
+
+type CommentRequest struct {
+	Comment string `json:"comment"`
 }
 
 var db *sql.DB
@@ -118,6 +189,26 @@ func main() {
 	protected.HandleFunc("/habits/{id}/entries", createHabitEntry).Methods("POST")
 	protected.HandleFunc("/habits/{id}/entries/{entryId}", deleteHabitEntry).Methods("DELETE")
 	protected.HandleFunc("/habits/{id}/stats", getHabitStats).Methods("GET")
+	
+	// Goal completion routes
+	protected.HandleFunc("/habits/{id}/goal-completions", getGoalCompletions).Methods("GET")
+	protected.HandleFunc("/habits/{id}/goal-completions", createGoalCompletion).Methods("POST")
+	protected.HandleFunc("/habits/{id}/check-goal", checkGoalCompletion).Methods("GET")
+	protected.HandleFunc("/habits/{id}/reset-goal", resetGoal).Methods("POST")
+	
+	// Friend system routes
+	protected.HandleFunc("/friends/request", sendFriendRequest).Methods("POST")
+	protected.HandleFunc("/friends", getFriends).Methods("GET")
+	protected.HandleFunc("/friends/requests", getFriendRequests).Methods("GET")
+	protected.HandleFunc("/friends/{id}/accept", acceptFriendRequest).Methods("PUT")
+	protected.HandleFunc("/friends/{id}", removeFriend).Methods("DELETE")
+	
+	// Activity feed routes
+	protected.HandleFunc("/feed", getFeed).Methods("GET")
+	protected.HandleFunc("/activities/{id}/react", reactToActivity).Methods("POST")
+	protected.HandleFunc("/activities/{id}/react", removeReaction).Methods("DELETE")
+	protected.HandleFunc("/activities/{id}/comment", commentOnActivity).Methods("POST")
+	protected.HandleFunc("/activities/{id}/comments", getActivityComments).Methods("GET")
 
 	// Configure CORS
 	c := cors.New(cors.Options{
@@ -162,6 +253,7 @@ func initDB() {
 		reminder_enabled BOOLEAN DEFAULT FALSE,
 		reminder_time VARCHAR(5) DEFAULT '09:00',
 		reminder_times TEXT,
+		last_goal_reset TIMESTAMP NULL,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 	)`
@@ -176,12 +268,86 @@ func initDB() {
 		FOREIGN KEY (habit_id) REFERENCES habits(id) ON DELETE CASCADE
 	)`
 
-	tables := []string{createUsersTable, createHabitsTable, createEntriesTable}
+	// Create goal_completions table
+	createGoalCompletionsTable := `
+	CREATE TABLE IF NOT EXISTS goal_completions (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		habit_id INT NOT NULL,
+		goal_type VARCHAR(20) NOT NULL,
+		goal_value INT NOT NULL,
+		completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		period_start DATE NOT NULL,
+		period_end DATE NOT NULL,
+		actual_count INT NOT NULL,
+		notes TEXT,
+		FOREIGN KEY (habit_id) REFERENCES habits(id) ON DELETE CASCADE
+	)`
+
+	// Create friendships table
+	createFriendshipsTable := `
+	CREATE TABLE IF NOT EXISTS friendships (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		user_id INT NOT NULL,
+		friend_id INT NOT NULL,
+		status ENUM('pending', 'accepted', 'declined') DEFAULT 'pending',
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (friend_id) REFERENCES users(id) ON DELETE CASCADE
+	)`
+
+	// Create activity_feeds table
+	createActivityFeedsTable := `
+	CREATE TABLE IF NOT EXISTS activity_feeds (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		user_id INT NOT NULL,
+		activity_type VARCHAR(50) NOT NULL,
+		habit_id INT,
+		goal_completion_id INT,
+		metadata JSON,
+		visibility ENUM('public', 'private', 'friends') DEFAULT 'public',
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+		FOREIGN KEY (habit_id) REFERENCES habits(id) ON DELETE CASCADE,
+		FOREIGN KEY (goal_completion_id) REFERENCES goal_completions(id) ON DELETE CASCADE
+	)`
+
+	createActivityReactionsTable := `
+		CREATE TABLE IF NOT EXISTS activity_reactions (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		activity_id INT NOT NULL,
+		user_id INT NOT NULL,
+		reaction_type ENUM('like', 'celebrate', 'support', 'wow') DEFAULT 'like',
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (activity_id) REFERENCES activity_feeds(id) ON DELETE CASCADE,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+		UNIQUE KEY unique_reaction (activity_id, user_id)
+	)`
+
+	createActivityCommentsTable := `
+		CREATE TABLE IF NOT EXISTS activity_comments (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		activity_id INT NOT NULL,
+		user_id INT NOT NULL,
+		comment TEXT NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (activity_id) REFERENCES activity_feeds(id) ON DELETE CASCADE,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+		INDEX idx_activity_created (activity_id, created_at)
+	);`
+
+	tables := []string{createUsersTable, createHabitsTable, createEntriesTable, createGoalCompletionsTable, createFriendshipsTable, createActivityFeedsTable,createActivityReactionsTable,createActivityCommentsTable}
 	
 	for _, table := range tables {
 		if _, err := db.Exec(table); err != nil {
 			log.Fatal("Error creating table:", err)
 		}
+	}
+
+	// Add last_goal_reset column if it doesn't exist (migration)
+	_, err := db.Exec("ALTER TABLE habits ADD COLUMN last_goal_reset TIMESTAMP NULL")
+	if err != nil && !strings.Contains(err.Error(), "Duplicate column name") {
+		log.Printf("Warning: Could not add last_goal_reset column: %v", err)
 	}
 
 	fmt.Println("Database tables initialized successfully")
@@ -774,6 +940,44 @@ func createHabitEntry(w http.ResponseWriter, r *http.Request) {
 	entry.ID = int(entryID)
 	entry.HabitID = habitID
 
+	// Criar atividade no feed quando hábito for completado
+	metadata := map[string]interface{}{
+		"habit_name": habit.Name,
+		"notes": entry.Notes,
+	}
+	
+	// Adicionar informação sobre sequência se necessário
+	if habit.GoalType == "streak" {
+		// Calcular sequência atual
+		streakQuery := `
+			SELECT COUNT(*) as streak FROM (
+				SELECT DATE(completed_at) as date 
+				FROM habit_entries 
+				WHERE habit_id = ? 
+				ORDER BY completed_at DESC
+			) AS dates 
+			WHERE date >= CURDATE() - INTERVAL (
+				SELECT COUNT(DISTINCT DATE(completed_at)) - 1 
+				FROM habit_entries 
+				WHERE habit_id = ? 
+				AND completed_at >= (
+					SELECT MAX(completed_at) - INTERVAL 30 DAY 
+					FROM habit_entries 
+					WHERE habit_id = ?
+				)
+			) DAY
+		`
+		var streak int
+		db.QueryRow(streakQuery, habitID, habitID, habitID).Scan(&streak)
+		metadata["streak_count"] = streak
+	}
+	
+	err = createFeedActivity(userID, "habit_completed", &habitID, nil, metadata)
+	if err != nil {
+		log.Printf("Erro ao criar atividade no feed: %v", err)
+		// Não interromper o fluxo por erro no feed
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(entry)
@@ -867,4 +1071,348 @@ func deleteHabitEntry(w http.ResponseWriter, r *http.Request) {
     }
 
     w.WriteHeader(http.StatusNoContent)
+}
+
+// Funções para gerenciamento de histórico de metas
+
+func getGoalCompletions(w http.ResponseWriter, r *http.Request) {
+	userID := getUserID(r)
+	vars := mux.Vars(r)
+	habitID, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid habit ID", http.StatusBadRequest)
+		return
+	}
+
+	// Verificar se o hábito pertence ao usuário
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM habits WHERE id = ? AND user_id = ?", habitID, userID).Scan(&count)
+	if err != nil || count == 0 {
+		http.Error(w, "Habit not found", http.StatusNotFound)
+		return
+	}
+
+	query := `SELECT id, habit_id, goal_type, goal_value, completed_at, period_start, period_end, actual_count, notes 
+			 FROM goal_completions WHERE habit_id = ? ORDER BY completed_at DESC`
+	rows, err := db.Query(query, habitID)
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var completions []GoalCompletion
+	for rows.Next() {
+		var completion GoalCompletion
+		err := rows.Scan(&completion.ID, &completion.HabitID, &completion.GoalType, &completion.GoalValue, 
+			&completion.CompletedAt, &completion.PeriodStart, &completion.PeriodEnd, &completion.ActualCount, &completion.Notes)
+		if err != nil {
+			http.Error(w, "Error scanning completions", http.StatusInternalServerError)
+			return
+		}
+		completions = append(completions, completion)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(completions)
+}
+
+func createGoalCompletion(w http.ResponseWriter, r *http.Request) {
+	userID := getUserID(r)
+	vars := mux.Vars(r)
+	habitID, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid habit ID", http.StatusBadRequest)
+		return
+	}
+
+	var completion GoalCompletion
+	if err := json.NewDecoder(r.Body).Decode(&completion); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Verificar se o hábito pertence ao usuário
+	var count int
+	err = db.QueryRow("SELECT COUNT(*) FROM habits WHERE id = ? AND user_id = ?", habitID, userID).Scan(&count)
+	if err != nil || count == 0 {
+		http.Error(w, "Habit not found", http.StatusNotFound)
+		return
+	}
+
+	completion.HabitID = habitID
+	
+	query := `INSERT INTO goal_completions (habit_id, goal_type, goal_value, period_start, period_end, actual_count, notes) 
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`
+	result, err := db.Exec(query, completion.HabitID, completion.GoalType, completion.GoalValue, 
+		completion.PeriodStart, completion.PeriodEnd, completion.ActualCount, completion.Notes)
+	if err != nil {
+		http.Error(w, "Error creating goal completion", http.StatusInternalServerError)
+		return
+	}
+
+	completionID, _ := result.LastInsertId()
+	completion.ID = int(completionID)
+	completion.CompletedAt = time.Now()
+
+	// Buscar nome do hábito para o feed
+	var habitName string
+	db.QueryRow("SELECT name FROM habits WHERE id = ?", habitID).Scan(&habitName)
+
+	// Criar atividade no feed quando meta for completada
+	metadata := map[string]interface{}{
+		"habit_name": habitName,
+		"goal_type": completion.GoalType,
+		"goal_value": completion.GoalValue,
+		"actual_count": completion.ActualCount,
+		"notes": completion.Notes,
+	}
+	
+	err = createFeedActivity(userID, "goal_achieved", &habitID, &completion.ID, metadata)
+	if err != nil {
+		log.Printf("Erro ao criar atividade no feed para meta completada: %v", err)
+		// Não interromper o fluxo por erro no feed
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(completion)
+}
+
+func checkGoalCompletion(w http.ResponseWriter, r *http.Request) {
+	userID := getUserID(r)
+	vars := mux.Vars(r)
+	habitID, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid habit ID", http.StatusBadRequest)
+		return
+	}
+
+	fmt.Printf("=== CHECK GOAL COMPLETION ===\n")
+	fmt.Printf("User ID: %d, Habit ID: %d\n", userID, habitID)
+
+	// Buscar informações do hábito
+	var habit Habit
+	var lastResetTime sql.NullTime
+	query := "SELECT id, goal, goal_type, last_goal_reset FROM habits WHERE id = ? AND user_id = ?"
+	err = db.QueryRow(query, habitID, userID).Scan(&habit.ID, &habit.Goal, &habit.GoalType, &lastResetTime)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Habit not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("Habit: Goal=%d, GoalType=%s, LastReset=%v\n", habit.Goal, habit.GoalType, lastResetTime)
+
+	if habit.Goal == 0 {
+		// Sem meta definida
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"has_goal": false,
+			"goal_completed": false,
+		})
+		return
+	}
+
+	// Calcular período atual baseado no tipo de meta
+	now := time.Now()
+	var periodStart, periodEnd time.Time
+	var actualCount int
+
+	switch habit.GoalType {
+	case "count":
+		// Meta diária
+		periodStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		periodEnd = periodStart.Add(24 * time.Hour).Add(-time.Second)
+	case "weekly":
+		// Meta semanal (domingo a sábado)
+		weekday := int(now.Weekday())
+		periodStart = now.AddDate(0, 0, -weekday)
+		periodStart = time.Date(periodStart.Year(), periodStart.Month(), periodStart.Day(), 0, 0, 0, 0, now.Location())
+		periodEnd = periodStart.AddDate(0, 0, 7).Add(-time.Second)
+	case "monthly":
+		// Meta mensal
+		periodStart = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		periodEnd = periodStart.AddDate(0, 1, 0).Add(-time.Second)
+	default:
+		// Meta de sequência não precisa de renovação
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"has_goal": true,
+			"goal_completed": false,
+			"needs_renewal": false,
+		})
+		return
+	}
+
+	fmt.Printf("Period: %s to %s\n", periodStart.Format("2006-01-02 15:04:05"), periodEnd.Format("2006-01-02 15:04:05"))
+
+	// Contar entradas do período atual, mas apenas após o último reset (se houver)
+	var countQuery string
+	var queryArgs []interface{}
+	
+	if lastResetTime.Valid {
+		// Se houve reset, contar apenas entradas após o reset
+		countQuery = `SELECT COUNT(*) FROM habit_entries 
+					 WHERE habit_id = ? AND completed_at >= ? AND completed_at <= ? AND completed_at > ?`
+		queryArgs = []interface{}{habitID, periodStart, periodEnd, lastResetTime.Time}
+		fmt.Printf("Counting entries after reset time: %s\n", lastResetTime.Time.Format("2006-01-02 15:04:05"))
+	} else {
+		// Se nunca houve reset, contar todas as entradas do período
+		countQuery = `SELECT COUNT(*) FROM habit_entries 
+					 WHERE habit_id = ? AND completed_at >= ? AND completed_at <= ?`
+		queryArgs = []interface{}{habitID, periodStart, periodEnd}
+		fmt.Printf("Counting all entries in period (no reset)\n")
+	}
+	
+	err = db.QueryRow(countQuery, queryArgs...).Scan(&actualCount)
+	if err != nil {
+		fmt.Printf("ERROR: Error counting entries: %v\n", err)
+		http.Error(w, "Error counting entries", http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("Actual count in period: %d (target: %d)\n", actualCount, habit.Goal)
+
+	// Verificar se já existe uma completion para este período
+	var existingCount int
+	existingQuery := `SELECT COUNT(*) FROM goal_completions 
+					 WHERE habit_id = ? AND period_start = ? AND period_end = ?`
+	err = db.QueryRow(existingQuery, habitID, periodStart, periodEnd).Scan(&existingCount)
+	if err != nil {
+		fmt.Printf("ERROR: Error checking existing completions: %v\n", err)
+		http.Error(w, "Error checking existing completions", http.StatusInternalServerError)
+		return
+	}
+
+	goalCompleted := actualCount >= habit.Goal
+	alreadyRecorded := existingCount > 0
+
+	fmt.Printf("Goal completed: %t, Already recorded: %t, Needs renewal: %t\n", goalCompleted, alreadyRecorded, goalCompleted && !alreadyRecorded)
+
+	response := map[string]interface{}{
+		"has_goal":        true,
+		"goal_completed":  goalCompleted,
+		"needs_renewal":   goalCompleted && !alreadyRecorded,
+		"actual_count":    actualCount,
+		"target_count":    habit.Goal,
+		"goal_type":       habit.GoalType,
+		"period_start":    periodStart,
+		"period_end":      periodEnd,
+		"already_recorded": alreadyRecorded,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func resetGoal(w http.ResponseWriter, r *http.Request) {
+	userID := getUserID(r)
+	vars := mux.Vars(r)
+	habitID, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid habit ID", http.StatusBadRequest)
+		return
+	}
+
+	fmt.Printf("=== RESET GOAL REQUEST ===\n")
+	fmt.Printf("User ID: %d, Habit ID: %d\n", userID, habitID)
+
+	// Buscar informações do hábito
+	var habit Habit
+	query := "SELECT id, goal, goal_type FROM habits WHERE id = ? AND user_id = ?"
+	err = db.QueryRow(query, habitID, userID).Scan(&habit.ID, &habit.Goal, &habit.GoalType)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			fmt.Printf("ERROR: Habit not found for ID %d and user %d\n", habitID, userID)
+			http.Error(w, "Habit not found", http.StatusNotFound)
+			return
+		}
+		fmt.Printf("ERROR: Database error: %v\n", err)
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("Habit found: ID=%d, Goal=%d, GoalType=%s\n", habit.ID, habit.Goal, habit.GoalType)
+
+	if habit.Goal == 0 {
+		fmt.Printf("ERROR: Habit has no goal set\n")
+		http.Error(w, "Habit has no goal set", http.StatusBadRequest)
+		return
+	}
+
+	// Calcular período atual baseado no tipo de meta
+	now := time.Now()
+	var periodStart, periodEnd time.Time
+
+	switch habit.GoalType {
+	case "count":
+		// Meta diária
+		periodStart = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		periodEnd = periodStart.Add(24 * time.Hour).Add(-time.Second)
+	case "weekly":
+		// Meta semanal (domingo a sábado)
+		weekday := int(now.Weekday())
+		periodStart = now.AddDate(0, 0, -weekday)
+		periodStart = time.Date(periodStart.Year(), periodStart.Month(), periodStart.Day(), 0, 0, 0, 0, now.Location())
+		periodEnd = periodStart.AddDate(0, 0, 7).Add(-time.Second)
+	case "monthly":
+		// Meta mensal
+		periodStart = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		periodEnd = periodStart.AddDate(0, 1, 0).Add(-time.Second)
+	default:
+		fmt.Printf("ERROR: Goal type '%s' does not support reset\n", habit.GoalType)
+		http.Error(w, "Goal type does not support reset", http.StatusBadRequest)
+		return
+	}
+
+	fmt.Printf("Period calculated: %s to %s\n", periodStart.Format("2006-01-02 15:04:05"), periodEnd.Format("2006-01-02 15:04:05"))
+
+	// Verificar se existem completions para deletar
+	var existingCount int
+	countQuery := "SELECT COUNT(*) FROM goal_completions WHERE habit_id = ? AND period_start = ? AND period_end = ?"
+	err = db.QueryRow(countQuery, habitID, periodStart, periodEnd).Scan(&existingCount)
+	if err != nil {
+		fmt.Printf("ERROR: Error counting existing completions: %v\n", err)
+		http.Error(w, "Error checking existing completions", http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("Found %d existing completions for this period\n", existingCount)
+
+	// Deletar completions existentes para o período atual
+	deleteQuery := "DELETE FROM goal_completions WHERE habit_id = ? AND period_start = ? AND period_end = ?"
+	result, err := db.Exec(deleteQuery, habitID, periodStart, periodEnd)
+	if err != nil {
+		fmt.Printf("ERROR: Error deleting completions: %v\n", err)
+		http.Error(w, "Error resetting goal", http.StatusInternalServerError)
+		return
+	}
+
+	deletedRows, _ := result.RowsAffected()
+	fmt.Printf("Deleted %d completion records\n", deletedRows)
+
+	// Atualizar timestamp de reset do hábito
+	updateQuery := "UPDATE habits SET last_goal_reset = NOW() WHERE id = ?"
+	_, err = db.Exec(updateQuery, habitID)
+	if err != nil {
+		fmt.Printf("ERROR: Error updating reset timestamp: %v\n", err)
+		http.Error(w, "Error updating reset timestamp", http.StatusInternalServerError)
+		return
+	}
+
+	fmt.Printf("Updated reset timestamp for habit %d\n", habitID)
+	fmt.Printf("Goal reset successfully for habit %d, period %s to %s\n", habitID, periodStart.Format("2006-01-02"), periodEnd.Format("2006-01-02"))
+
+	response := map[string]interface{}{
+		"message": "Goal reset successfully",
+		"period_start": periodStart,
+		"period_end": periodEnd,
+		"deleted_records": deletedRows,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }

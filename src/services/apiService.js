@@ -3,7 +3,7 @@ import { useState, useEffect, useContext, createContext } from 'react';
 // apiService.js
 class ApiService {
   constructor() {
-    this.baseURL = 'http://localhost:8080/api';
+    this.baseURL = 'http://3.129.13.137:8080/api';
     this.token = localStorage.getItem('authToken');
   }
 

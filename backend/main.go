@@ -144,6 +144,91 @@ type CommentRequest struct {
 	Comment string `json:"comment"`
 }
 
+// Estruturas para sistema de grupos e desafios
+type Group struct {
+	ID          int       `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Privacy     string    `json:"privacy"` // "public", "private", "invite_only"
+	CreatorID   int       `json:"creator_id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	// Dados relacionados
+	Creator     *User `json:"creator,omitempty"`
+	MemberCount int   `json:"member_count,omitempty"`
+	IsJoined    bool  `json:"is_joined,omitempty"`
+}
+
+type GroupMember struct {
+	ID       int       `json:"id"`
+	GroupID  int       `json:"group_id"`
+	UserID   int       `json:"user_id"`
+	Role     string    `json:"role"` // "admin", "moderator", "member"
+	JoinedAt time.Time `json:"joined_at"`
+	// Dados relacionados
+	User  *User  `json:"user,omitempty"`
+	Group *Group `json:"group,omitempty"`
+}
+
+type Challenge struct {
+	ID          int       `json:"id"`
+	GroupID     int       `json:"group_id"`
+	CreatorID   int       `json:"creator_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	HabitName   string    `json:"habit_name"`
+	GoalValue   int       `json:"goal_value"`
+	GoalType    string    `json:"goal_type"` // "count", "streak", "weekly", "monthly"
+	StartDate   time.Time `json:"start_date"`
+	EndDate     time.Time `json:"end_date"`
+	Status      string    `json:"status"` // "upcoming", "active", "completed", "cancelled"
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	// Dados relacionados
+	Creator          *User `json:"creator,omitempty"`
+	Group            *Group `json:"group,omitempty"`
+	ParticipantCount int   `json:"participant_count,omitempty"`
+	IsParticipating  bool  `json:"is_participating,omitempty"`
+}
+
+type ChallengeParticipant struct {
+	ID          int       `json:"id"`
+	ChallengeID int       `json:"challenge_id"`
+	UserID      int       `json:"user_id"`
+	Progress    int       `json:"progress"`
+	Notes       string    `json:"notes,omitempty"`
+	JoinedAt    time.Time `json:"joined_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	// Dados relacionados
+	User      *User      `json:"user,omitempty"`
+	Challenge *Challenge `json:"challenge,omitempty"`
+}
+
+type GroupJoinRequest struct {
+	Name string `json:"name"`
+}
+
+type CreateGroupRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Privacy     string `json:"privacy"`
+}
+
+type CreateChallengeRequest struct {
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	HabitName   string    `json:"habit_name"`
+	GoalValue   int       `json:"goal_value"`
+	GoalType    string    `json:"goal_type"`
+	StartDate   time.Time `json:"start_date"`
+	EndDate     time.Time `json:"end_date"`
+}
+
+type UpdateProgressRequest struct {
+	Progress int    `json:"progress"`
+	Notes    string `json:"notes"`
+}
+
 var db *sql.DB
 var jwtSecret = []byte("your-secret-key-change-in-production")
 
@@ -212,13 +297,41 @@ func main() {
 	protected.HandleFunc("/activities/{id}/comment", commentOnActivity).Methods("POST")
 	protected.HandleFunc("/activities/{id}/comments", getActivityComments).Methods("GET")
 
+	// Group routes
+	protected.HandleFunc("/groups", getGroups).Methods("GET")
+	protected.HandleFunc("/groups", createGroup).Methods("POST")
+	protected.HandleFunc("/groups/{id}", getGroup).Methods("GET")
+	protected.HandleFunc("/groups/{id}", updateGroup).Methods("PUT")
+	protected.HandleFunc("/groups/{id}", deleteGroup).Methods("DELETE")
+	protected.HandleFunc("/groups/{id}/join", joinGroup).Methods("POST")
+	protected.HandleFunc("/groups/{id}/leave", leaveGroup).Methods("DELETE")
+	protected.HandleFunc("/groups/{id}/members", getGroupMembers).Methods("GET")
+	
+	// Challenge routes
+	protected.HandleFunc("/challenges", getChallenges).Methods("GET")
+	protected.HandleFunc("/groups/{groupId}/challenges", getGroupChallenges).Methods("GET")
+	protected.HandleFunc("/groups/{groupId}/challenges", createChallenge).Methods("POST")
+	protected.HandleFunc("/challenges/{id}", getChallenge).Methods("GET")
+	protected.HandleFunc("/challenges/{id}", updateChallenge).Methods("PUT")
+	protected.HandleFunc("/challenges/{id}", deleteChallenge).Methods("DELETE")
+	protected.HandleFunc("/challenges/{id}/join", joinChallenge).Methods("POST")
+	protected.HandleFunc("/challenges/{id}/leave", leaveChallenge).Methods("DELETE")
+	protected.HandleFunc("/challenges/{id}/progress", updateChallengeProgress).Methods("PUT")
+	protected.HandleFunc("/challenges/{id}/participants", getChallengeParticipants).Methods("GET")
+
 	// Configure CORS
 	c := cors.New(cors.Options{
 	AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 	AllowedHeaders:   []string{"*"},
 	AllowCredentials: true,
 	AllowOriginFunc: func(origin string) bool {
-		return strings.HasPrefix(origin, "http://192.168.0.") || origin == "http://localhost:3000" || origin == "http://localhost:3001" || origin == "http://3.18.106.151"
+		return strings.HasPrefix(origin, "http://192.168.0.") || 
+			   origin == "http://localhost:3000" || 
+			   origin == "http://localhost:3001" || 
+			   origin == "http://3.18.106.151:3000" || 
+			   origin == "http://3.18.106.151" ||
+			   strings.HasPrefix(origin, "http://3.18.106.151") ||
+			   strings.HasPrefix(origin, "http://3.129.13.137")
 	},
 })
 
@@ -338,7 +451,68 @@ func initDB() {
 		INDEX idx_activity_created (activity_id, created_at)
 	);`
 
-	tables := []string{createUsersTable, createHabitsTable, createEntriesTable, createGoalCompletionsTable, createFriendshipsTable, createActivityFeedsTable,createActivityReactionsTable,createActivityCommentsTable}
+	// Create groups table
+	createGroupsTable := `
+	CREATE TABLE IF NOT EXISTS ` + "`groups`" + ` (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		name VARCHAR(100) NOT NULL,
+		description TEXT,
+		privacy ENUM('public', 'private', 'invite_only') DEFAULT 'public',
+		creator_id INT NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
+	)`
+
+	// Create group_members table
+	createGroupMembersTable := `
+	CREATE TABLE IF NOT EXISTS group_members (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		group_id INT NOT NULL,
+		user_id INT NOT NULL,
+		role ENUM('admin', 'moderator', 'member') DEFAULT 'member',
+		joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (group_id) REFERENCES ` + "`groups`" + `(id) ON DELETE CASCADE,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+		UNIQUE KEY unique_membership (group_id, user_id)
+	)`
+
+	// Create challenges table
+	createChallengesTable := `
+	CREATE TABLE IF NOT EXISTS challenges (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		group_id INT NOT NULL,
+		creator_id INT NOT NULL,
+		name VARCHAR(100) NOT NULL,
+		description TEXT,
+		habit_name VARCHAR(100) NOT NULL,
+		goal_value INT NOT NULL,
+		goal_type ENUM('count', 'streak', 'weekly', 'monthly') DEFAULT 'count',
+		start_date DATE NOT NULL,
+		end_date DATE NOT NULL,
+		status ENUM('upcoming', 'active', 'completed', 'cancelled') DEFAULT 'upcoming',
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		FOREIGN KEY (group_id) REFERENCES ` + "`groups`" + `(id) ON DELETE CASCADE,
+		FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
+	)`
+
+	// Create challenge_participants table
+	createChallengeParticipantsTable := `
+	CREATE TABLE IF NOT EXISTS challenge_participants (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		challenge_id INT NOT NULL,
+		user_id INT NOT NULL,
+		progress INT DEFAULT 0,
+		notes TEXT,
+		joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+		FOREIGN KEY (challenge_id) REFERENCES challenges(id) ON DELETE CASCADE,
+		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+		UNIQUE KEY unique_participation (challenge_id, user_id)
+	)`
+
+	tables := []string{createUsersTable, createHabitsTable, createEntriesTable, createGoalCompletionsTable, createFriendshipsTable, createActivityFeedsTable, createActivityReactionsTable, createActivityCommentsTable, createGroupsTable, createGroupMembersTable, createChallengesTable, createChallengeParticipantsTable}
 	
 	for _, table := range tables {
 		if _, err := db.Exec(table); err != nil {

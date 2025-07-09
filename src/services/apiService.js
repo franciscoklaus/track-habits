@@ -268,6 +268,129 @@ class ApiService {
       }),
     });
   }
+
+  // ============= GRUPOS =============
+  
+  // Listar grupos
+  async getGroups() {
+    return await this.request('/groups');
+  }
+
+  // Buscar grupo específico
+  async getGroup(id) {
+    return await this.request(`/groups/${id}`);
+  }
+
+  // Criar grupo
+  async createGroup(groupData) {
+    return await this.request('/groups', {
+      method: 'POST',
+      body: JSON.stringify(groupData),
+    });
+  }
+
+  // Atualizar grupo
+  async updateGroup(id, groupData) {
+    return await this.request(`/groups/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(groupData),
+    });
+  }
+
+  // Deletar grupo
+  async deleteGroup(id) {
+    return await this.request(`/groups/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Entrar no grupo
+  async joinGroup(id) {
+    return await this.request(`/groups/${id}/join`, {
+      method: 'POST',
+    });
+  }
+
+  // Sair do grupo
+  async leaveGroup(id) {
+    return await this.request(`/groups/${id}/leave`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Listar membros do grupo
+  async getGroupMembers(id) {
+    return await this.request(`/groups/${id}/members`);
+  }
+
+  // ============= DESAFIOS =============
+  
+  // Listar todos os desafios
+  async getChallenges() {
+    return await this.request('/challenges');
+  }
+
+  // Listar desafios de um grupo
+  async getGroupChallenges(groupId) {
+    return await this.request(`/groups/${groupId}/challenges`);
+  }
+
+  // Buscar desafio específico
+  async getChallenge(id) {
+    return await this.request(`/challenges/${id}`);
+  }
+
+  // Criar desafio
+  async createChallenge(groupId, challengeData) {
+    return await this.request(`/groups/${groupId}/challenges`, {
+      method: 'POST',
+      body: JSON.stringify(challengeData),
+    });
+  }
+
+  // Atualizar desafio
+  async updateChallenge(id, challengeData) {
+    return await this.request(`/challenges/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(challengeData),
+    });
+  }
+
+  // Deletar desafio
+  async deleteChallenge(id) {
+    return await this.request(`/challenges/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Participar do desafio
+  async joinChallenge(id) {
+    return await this.request(`/challenges/${id}/join`, {
+      method: 'POST',
+    });
+  }
+
+  // Sair do desafio
+  async leaveChallenge(id) {
+    return await this.request(`/challenges/${id}/leave`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Atualizar progresso no desafio
+  async updateChallengeProgress(id, progressData) {
+    return await this.request(`/challenges/${id}/progress`, {
+      method: 'PUT',
+      body: JSON.stringify(progressData),
+    });
+  }
+
+  // Listar participantes do desafio
+  async getChallengeParticipants(id) {
+    return await this.request(`/challenges/${id}/participants`);
+  }
+
+  // ============= HISTÓRICO DE METAS =============
 }
 
 // Hook personalizado para usar o serviço

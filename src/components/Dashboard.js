@@ -5,6 +5,8 @@ import notificationService from '../services/notificationService';
 import GoalCompletionModal from './GoalCompletionModal';
 import ActivityFeed from './ActivityFeed';
 import FriendsSidebar from './FriendsSidebar';
+import Groups from './Groups';
+import Challenges from './Challenges';
 
 // Constantes para categorias e ícones
 const CATEGORIES = [
@@ -94,6 +96,10 @@ const Dashboard = () => {
   const [showActivityFeed, setShowActivityFeed] = useState(false);
   const [showFriendsSidebar, setShowFriendsSidebar] = useState(false);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+  
+  // Estados para grupos e desafios
+  const [showGroups, setShowGroups] = useState(false);
+  const [showChallenges, setShowChallenges] = useState(false);
 
   // Verificar status da permissão de notificação
   useEffect(() => {
@@ -786,6 +792,28 @@ const Dashboard = () => {
                     {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}
                   </span>
                 )}
+              </button>
+              
+              <button
+                onClick={() => setShowGroups(true)}
+                className="px-3 sm:px-4 py-2 text-sm font-medium text-purple-600 hover:text-purple-800 hover:bg-purple-50 border border-purple-200 rounded-lg transition-all duration-200 flex items-center gap-2"
+                title="Grupos"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <span className="hidden sm:inline">Grupos</span>
+              </button>
+              
+              <button
+                onClick={() => setShowChallenges(true)}
+                className="px-3 sm:px-4 py-2 text-sm font-medium text-orange-600 hover:text-orange-800 hover:bg-orange-50 border border-orange-200 rounded-lg transition-all duration-200 flex items-center gap-2"
+                title="Desafios"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                </svg>
+                <span className="hidden sm:inline">Desafios</span>
               </button>
             </div>
             
@@ -1626,6 +1654,50 @@ const Dashboard = () => {
           fetchHabits();
         }}
       />
+      
+      {/* Modal de Grupos */}
+      {showGroups && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[95vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Grupos</h2>
+              <button
+                onClick={() => setShowGroups(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+              >
+                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto max-h-[calc(95vh-80px)]">
+              <Groups />
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Modal de Desafios */}
+      {showChallenges && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[95vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Desafios</h2>
+              <button
+                onClick={() => setShowChallenges(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+              >
+                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto max-h-[calc(95vh-80px)]">
+              <Challenges />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

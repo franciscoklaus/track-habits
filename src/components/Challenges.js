@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiService } from '../services/apiService';
 import './Challenges.css';
 
-const Challenges = () => {
+const Challenges = ({ onChallengeUpdate }) => {
   const [challenges, setChallenges] = useState([]);
   const [groups, setGroups] = useState([]);
   const [selectedChallenge, setSelectedChallenge] = useState(null);
@@ -51,8 +51,8 @@ const Challenges = () => {
         habit_name: newChallenge.habit_name,
         goal_value: parseInt(newChallenge.goal_value),
         goal_type: newChallenge.goal_type,
-        start_date: newChallenge.start_date,
-        end_date: newChallenge.end_date
+        start_date: new Date(newChallenge.start_date).toISOString(),
+        end_date: new Date(newChallenge.end_date).toISOString()
       });
       setChallenges([challenge, ...challenges]);
       setNewChallenge({
@@ -76,6 +76,10 @@ const Challenges = () => {
     try {
       await apiService.joinChallenge(challengeId);
       await fetchData(); // Atualizar a lista
+      // Notificar o Dashboard para atualizar desafios ativos
+      if (onChallengeUpdate) {
+        await onChallengeUpdate();
+      }
     } catch (err) {
       setError('Erro ao participar do desafio');
       console.error('Erro ao participar do desafio:', err);
@@ -86,6 +90,10 @@ const Challenges = () => {
     try {
       await apiService.leaveChallenge(challengeId);
       await fetchData(); // Atualizar a lista
+      // Notificar o Dashboard para atualizar desafios ativos
+      if (onChallengeUpdate) {
+        await onChallengeUpdate();
+      }
     } catch (err) {
       setError('Erro ao sair do desafio');
       console.error('Erro ao sair do desafio:', err);

@@ -414,7 +414,8 @@ func getChallenges(w http.ResponseWriter, r *http.Request) {
 			   u.id, u.username, u.email,
 			   g.id, g.name, g.privacy,
 			   (SELECT COUNT(*) FROM challenge_participants WHERE challenge_id = c.id) as participant_count,
-			   (SELECT COUNT(*) FROM challenge_participants WHERE challenge_id = c.id AND user_id = ?) as is_participating
+			   (SELECT COUNT(*) FROM challenge_participants WHERE challenge_id = c.id AND user_id = ?) as is_participating,
+			   COALESCE((SELECT progress FROM challenge_participants WHERE challenge_id = c.id AND user_id = ?), 0) as user_progress
 		FROM challenges c
 		JOIN users u ON u.id = c.creator_id
 		JOIN ` + "`groups`" + ` g ON g.id = c.group_id
@@ -423,7 +424,7 @@ func getChallenges(w http.ResponseWriter, r *http.Request) {
 		ORDER BY c.created_at DESC
 	`
 
-	rows, err := db.Query(query, userID, userID)
+	rows, err := db.Query(query, userID, userID, userID)
 	if err != nil {
 		log.Printf("Erro ao buscar desafios: %v", err)
 		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
@@ -437,11 +438,12 @@ func getChallenges(w http.ResponseWriter, r *http.Request) {
 		var creator User
 		var group Group
 		var isParticipatingInt int
+		var userProgress int
 		err := rows.Scan(&c.ID, &c.GroupID, &c.Name, &c.Description, &c.HabitName, &c.GoalValue, &c.GoalType,
 						&c.StartDate, &c.EndDate, &c.Status, &c.CreatorID, &c.CreatedAt, &c.UpdatedAt,
 						&creator.ID, &creator.Username, &creator.Email,
 						&group.ID, &group.Name, &group.Privacy,
-						&c.ParticipantCount, &isParticipatingInt)
+						&c.ParticipantCount, &isParticipatingInt, &userProgress)
 		if err != nil {
 			log.Printf("Erro ao escanear desafio: %v", err)
 			continue
@@ -449,6 +451,7 @@ func getChallenges(w http.ResponseWriter, r *http.Request) {
 		c.Creator = &creator
 		c.Group = &group
 		c.IsParticipating = isParticipatingInt > 0
+		c.UserProgress = userProgress
 		challenges = append(challenges, c)
 	}
 
@@ -493,6 +496,10 @@ func createChallenge(w http.ResponseWriter, r *http.Request) {
 	if req.GoalValue == 0 {
 		req.GoalValue = 7 // 7 dias por padrão
 	}
+
+	// Debug logs
+	log.Printf("Creating challenge with goal_type: '%s', goal_value: %d", req.GoalType, req.GoalValue)
+	log.Printf("Challenge data: %+v", req)
 
 	// Criar o desafio
 	query := `
@@ -737,6 +744,21 @@ func joinChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Buscar informações do desafio para o feed
+	var challengeName, challengeHabitName string
+	err = db.QueryRow("SELECT name, habit_name FROM challenges WHERE id = ?", challengeID).Scan(&challengeName, &challengeHabitName)
+	if err != nil {
+		log.Printf("Erro ao buscar desafio para feed: %v", err)
+	} else {
+		// Criar atividade no feed
+		challengeIDPtr := &challengeID
+		metadata := map[string]interface{}{
+			"challenge_name": challengeName,
+			"habit_name": challengeHabitName,
+		}
+		createFeedActivity(userID, "challenge_joined", nil, nil, challengeIDPtr, metadata)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"message": "Participação no desafio realizada com sucesso"})
 }
@@ -801,8 +823,10 @@ func getChallengeParticipants(w http.ResponseWriter, r *http.Request) {
 	err = db.QueryRow(`
 		SELECT c.group_id FROM challenges c
 		JOIN ` + "`groups`" + ` g ON g.id = c.group_id
-		LEFT JOIN group_members gm ON gm.group_id = g.id
-		WHERE c.id = ? AND (g.privacy = 'public' OR gm.user_id = ?)
+		WHERE c.id = ? AND (
+			g.privacy = 'public' OR 
+			EXISTS (SELECT 1 FROM group_members WHERE group_id = g.id AND user_id = ?)
+		)
 	`, challengeID, userID).Scan(&groupID)
 
 	if err != nil {
@@ -823,6 +847,8 @@ func getChallengeParticipants(w http.ResponseWriter, r *http.Request) {
 		WHERE cp.challenge_id = ?
 		ORDER BY cp.progress DESC, cp.joined_at ASC
 	`
+	
+	log.Printf("Buscando participantes para o desafio %d", challengeID)
 
 	rows, err := db.Query(query, challengeID)
 	if err != nil {
@@ -843,9 +869,18 @@ func getChallengeParticipants(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		cp.User = &u
+		log.Printf("Participante encontrado: ID=%d, UserID=%d, Username=%s", cp.ID, cp.UserID, u.Username)
 		participants = append(participants, cp)
 	}
 
+	// Verificar se houve erro durante a iteração
+	if err := rows.Err(); err != nil {
+		log.Printf("Erro durante iteração dos participantes: %v", err)
+		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Total de participantes encontrados: %d", len(participants))
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(participants)
 }
@@ -895,6 +930,30 @@ func updateChallengeProgress(w http.ResponseWriter, r *http.Request) {
 	if rowsAffected == 0 {
 		http.Error(w, "Falha ao atualizar progresso", http.StatusInternalServerError)
 		return
+	}
+
+	// Buscar informações do desafio para o feed
+	var challengeName, challengeHabitName string
+	var goalValue int
+	err = db.QueryRow("SELECT name, habit_name, goal_value FROM challenges WHERE id = ?", challengeID).Scan(&challengeName, &challengeHabitName, &goalValue)
+	if err != nil {
+		log.Printf("Erro ao buscar desafio para feed: %v", err)
+	} else {
+		// Criar atividade no feed apenas se houve progresso significativo
+		if req.Progress > existingProgress {
+			challengeIDPtr := &challengeID
+			metadata := map[string]interface{}{
+				"challenge_name": challengeName,
+				"habit_name": challengeHabitName,
+				"old_progress": existingProgress,
+				"new_progress": req.Progress,
+				"goal_value": goalValue,
+				"notes": req.Notes,
+			}
+			
+			// Criar atividade no feed
+			createFeedActivity(userID, "challenge_progress", nil, nil, challengeIDPtr, metadata)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

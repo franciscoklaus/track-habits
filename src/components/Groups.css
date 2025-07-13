@@ -129,6 +129,15 @@
   background-color: #7f8c8d;
 }
 
+.btn-danger {
+  background-color: #dc3545;
+  color: white;
+}
+
+.btn-danger:hover {
+  background-color: #c82333;
+}
+
 .empty-state {
   text-align: center;
   padding: 60px 20px;
@@ -404,6 +413,52 @@
 .status-badge.cancelled {
   background-color: #f8d7da;
   color: #721c24;
+}
+
+/* Modal de Confirmação de Exclusão */
+.confirm-modal {
+  max-width: 450px;
+}
+
+.modal-body {
+  padding: 30px 20px 20px;
+  text-align: center;
+}
+
+.warning-icon {
+  font-size: 48px;
+  margin-bottom: 15px;
+  color: #e74c3c;
+}
+
+.warning-text {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 0 10px 0;
+}
+
+.warning-subtext {
+  font-size: 14px;
+  color: #7f8c8d;
+  margin: 0 0 20px 0;
+  line-height: 1.4;
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding: 0 20px 20px;
+}
+
+.form-actions .btn {
+  min-width: 100px;
+}
+
+.btn-danger:hover {
+  background-color: #c0392b;
+  transform: translateY(-1px);
 }
 
 /* Responsive Design */

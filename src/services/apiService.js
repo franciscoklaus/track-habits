@@ -1,14 +1,19 @@
-import { useState, useEffect, useContext, createContext } from 'react';
+import { useState, useEffect, useContext, createContext, useCallback } from 'react';
 
 // apiService.js
 class ApiService {
   constructor() {
-    this.baseURL = 'http://3.129.13.137:8080/api';
+    this.baseURL = 'http://localhost:8081/api';
     this.token = localStorage.getItem('authToken');
   }
 
   // Método auxiliar para fazer requisições
   async request(url, options = {}) {
+    // Garantir que temos o token mais atual do localStorage
+    this.token = localStorage.getItem('authToken');
+    
+    console.log('API Request:', url, 'Token exists:', !!this.token); // Debug
+    
     const config = {
       headers: {
         'Content-Type': 'application/json',
@@ -20,6 +25,9 @@ class ApiService {
     // Adicionar token de autenticação se disponível
     if (this.token) {
       config.headers.Authorization = `Bearer ${this.token}`;
+      console.log('Adding Authorization header:', config.headers.Authorization?.substring(0, 20) + '...'); // Debug
+    } else {
+      console.log('No token available for request'); // Debug
     }
 
     try {
@@ -27,6 +35,7 @@ class ApiService {
       
       // Se o token expirou, limpar e redirecionar
       if (response.status === 401) {
+        console.log('Token expired, clearing auth'); // Debug
         this.clearAuth();
         window.location.href = '/login';
         throw new Error('Token expirado');
@@ -65,7 +74,11 @@ class ApiService {
 
   // Verificar se está autenticado
   isAuthenticated() {
-    return !!this.token;
+    // Sempre verificar o localStorage para ter o valor mais atual
+    this.token = localStorage.getItem('authToken');
+    const isAuth = !!this.token;
+    console.log('isAuthenticated check:', isAuth, 'Token:', this.token?.substring(0, 20) + '...'); // Debug
+    return isAuth;
   }
 
   // MÉTODOS DE AUTENTICAÇÃO
@@ -330,9 +343,20 @@ class ApiService {
     return await this.request('/challenges');
   }
 
-  // Listar desafios de um grupo
-  async getGroupChallenges(groupId) {
-    return await this.request(`/groups/${groupId}/challenges`);
+  // Listar desafios ativos do usuário (filtrar apenas os que está participando e estão ativos)
+  async getActiveChallenges() {
+    const challenges = await this.request('/challenges');
+    // Filtrar apenas desafios ativos e que o usuário está participando
+    const now = new Date();
+    return challenges.filter(challenge => {
+      const startDate = new Date(challenge.start_date);
+      const endDate = new Date(challenge.end_date);
+      
+      return challenge.is_participating && 
+             (challenge.status === 'active' || 
+              (challenge.status === 'upcoming' && startDate <= now)) && 
+             endDate > now;
+    });
   }
 
   // Buscar desafio específico
@@ -404,10 +428,13 @@ export const ApiProvider = ({ children }) => {
   const [api] = useState(() => new ApiService());
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
     const currentUser = api.getCurrentUser();
+    const authStatus = api.isAuthenticated();
     setUser(currentUser);
+    setIsAuthenticated(authStatus);
     setLoading(false);
   }, [api]);
 
@@ -415,6 +442,7 @@ export const ApiProvider = ({ children }) => {
     try {
       const response = await api.login(credentials);
       setUser(response.user);
+      setIsAuthenticated(true);
       return response;
     } catch (error) {
       throw error;
@@ -425,6 +453,7 @@ export const ApiProvider = ({ children }) => {
     try {
       const response = await api.register(userData);
       setUser(response.user);
+      setIsAuthenticated(true);
       return response;
     } catch (error) {
       throw error;
@@ -434,6 +463,7 @@ export const ApiProvider = ({ children }) => {
   const logout = () => {
     api.logout();
     setUser(null);
+    setIsAuthenticated(false);
   };
 
   const value = {
@@ -442,7 +472,7 @@ export const ApiProvider = ({ children }) => {
     login,
     register,
     logout,
-    isAuthenticated: api.isAuthenticated(),
+    isAuthenticated,
     loading,
   };
 
@@ -707,6 +737,50 @@ export const useGoalManagement = (habitId) => {
     fetchCompletions,
     recordGoalCompletion,
     resetGoal,
+  };
+};
+
+// Hook para gerenciar desafios ativos
+export const useActiveChallenges = () => {
+  const { api } = useApi();
+  const [activeChallenges, setActiveChallenges] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const fetchActiveChallenges = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const challenges = await api.getActiveChallenges();
+      setActiveChallenges(challenges || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [api]);
+
+  const updateChallengeProgress = useCallback(async (challengeId, progressData) => {
+    try {
+      await api.updateChallengeProgress(challengeId, progressData);
+      // Atualizar lista após progresso
+      await fetchActiveChallenges();
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    }
+  }, [api, fetchActiveChallenges]);
+
+  useEffect(() => {
+    fetchActiveChallenges();
+  }, [fetchActiveChallenges]);
+
+  return {
+    activeChallenges,
+    loading,
+    error,
+    fetchActiveChallenges,
+    updateChallengeProgress,
   };
 };
 

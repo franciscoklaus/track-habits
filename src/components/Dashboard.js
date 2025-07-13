@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { useApi, useHabits } from '../services/apiService';
+import { useApi, useHabits, useActiveChallenges } from '../services/apiService';
 import notificationService from '../services/notificationService';
 import GoalCompletionModal from './GoalCompletionModal';
 import ActivityFeed from './ActivityFeed';
@@ -48,6 +48,7 @@ const VISIBILITY_OPTIONS = [
 const Dashboard = () => {
   const { user, logout } = useApi();
   const { habits, loading, error, createHabit, deleteHabit, completeHabit, updateHabit, fetchHabits } = useHabits();
+  const { activeChallenges, loading: challengesLoading, updateChallengeProgress, fetchActiveChallenges } = useActiveChallenges();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newHabit, setNewHabit] = useState({ 
     name: '', 
@@ -100,6 +101,8 @@ const Dashboard = () => {
   // Estados para grupos e desafios
   const [showGroups, setShowGroups] = useState(false);
   const [showChallenges, setShowChallenges] = useState(false);
+  const [showChallengeDetail, setShowChallengeDetail] = useState(false);
+  const [selectedChallenge, setSelectedChallenge] = useState(null);
 
   // Verificar status da permissão de notificação
   useEffect(() => {
@@ -746,6 +749,30 @@ const Dashboard = () => {
     }
   }, [showFriendsSidebar, fetchPendingRequestsCount]);
 
+  // Atualizar desafios ativos quando showChallenges for fechado
+  useEffect(() => {
+    if (!showChallenges) {
+      // Buscar desafios ativos novamente quando o modal de desafios for fechado
+      fetchActiveChallenges();
+    }
+  }, [showChallenges, fetchActiveChallenges]);
+
+  const handleChallengeDetailClick = async (challenge) => {
+    try {
+      // Buscar detalhes completos do desafio incluindo participantes
+      const challengeDetail = await api.getChallenge(challenge.id);
+      const participants = await api.getChallengeParticipants(challenge.id);
+      
+      setSelectedChallenge({
+        ...challengeDetail,
+        participants: participants || []
+      });
+      setShowChallengeDetail(true);
+    } catch (err) {
+      console.error('Erro ao carregar detalhes do desafio:', err);
+    }
+  };
+
   if (loading) {
     return <div className="flex justify-center items-center h-screen">Carregando...</div>;
   }
@@ -1286,6 +1313,199 @@ const Dashboard = () => {
           </div>
         </div>
       )}
+
+        {/* Seção de Desafios Ativos */}
+        {activeChallenges.length > 0 && (
+          <div className="mb-8 sm:mb-12">
+            <div className="flex items-center justify-between mb-6 sm:mb-8">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2 sm:gap-3">
+                <span className="text-2xl sm:text-3xl">🏆</span>
+                Desafios Ativos
+              </h2>
+              <button
+                onClick={() => setShowChallenges(true)}
+                className="text-sm text-gray-600 hover:text-gray-900 font-medium transition-colors duration-200"
+              >
+                Ver todos
+              </button>
+            </div>
+            
+            {/* Mobile optimized challenges grid */}
+            <div className="grid gap-4 sm:gap-6 md:gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+              {activeChallenges.map(challenge => {
+                const startDate = new Date(challenge.start_date);
+                const endDate = new Date(challenge.end_date);
+                const now = new Date();
+                const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+                const daysElapsed = Math.ceil((now - startDate) / (1000 * 60 * 60 * 24));
+                const daysRemaining = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
+                const progressPercentage = Math.min((daysElapsed / totalDays) * 100, 100);
+                
+                return (
+                  <div key={challenge.id} className="group bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 overflow-hidden">
+                    {/* Mobile optimized challenge header */}
+                    <div className="p-4 sm:p-6 pb-3 sm:pb-4">
+                      <div className="flex items-start justify-between mb-3 sm:mb-4">
+                        <div className="flex-1 pr-2 sm:pr-4">
+                          <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                            <span className="text-xl sm:text-2xl">🎯</span>
+                            <div className="min-w-0 flex-1">
+                              <h3 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
+                                {challenge.name}
+                              </h3>
+                              <span className="text-xs text-gray-500 font-medium">
+                                Grupo: {challenge.group?.name}
+                              </span>
+                            </div>
+                          </div>
+                          {challenge.description && (
+                            <p className="text-gray-600 text-xs sm:text-sm leading-relaxed line-clamp-2 sm:line-clamp-3">
+                              {challenge.description}
+                            </p>
+                          )}
+                        </div>
+                        
+                        {/* Mobile optimized status badges */}
+                        <div className='flex flex-col gap-1 sm:gap-2 flex-shrink-0'>
+                          <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700 border border-green-200 text-center">
+                            Ativo
+                          </span>
+                          <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-purple-50 text-purple-700 border border-purple-200 text-center">
+                            {challenge.goal_value} {challenge.goal_type}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Mobile optimized goal info */}
+                      <div className="mt-3 sm:mt-4 p-2 sm:p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs sm:text-sm font-medium text-gray-700">
+                            Meta: {challenge.habit_name}
+                          </span>
+                        </div>
+                        
+                        {/* Progresso temporal */}
+                        <div className="mb-3">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-xs text-gray-600">
+                              {daysRemaining > 0 ? `${daysRemaining} dias restantes` : 'Finalizado'}
+                            </span>
+                            <span className="text-xs text-gray-500">{Math.round(progressPercentage)}%</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="h-2 rounded-full transition-all duration-300 bg-gray-800"
+                              style={{ width: `${progressPercentage}%` }}
+                            ></div>
+                          </div>
+                        </div>
+
+                        {/* Progresso do usuário */}
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-gray-600">Seu progresso:</span>
+                          <span className="font-medium text-gray-900">
+                            {challenge.user_progress || 0} / {challenge.goal_value} {challenge.goal_type}
+                          </span>
+                        </div>
+                        
+                        {/* Participantes info */}
+                        <div className="flex items-center justify-between text-xs text-gray-500">
+                          <span>{challenge.participant_count} participantes</span>
+                          <span>por {challenge.creator?.username}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="border-t border-gray-100"></div>
+
+                    {/* Mobile optimized actions */}
+                    <div className="p-3 sm:p-4 bg-gray-50/50">
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        {/* Primary action button - full width on mobile */}
+                        <button
+                          onClick={async () => {
+                            try {
+                              // Incrementar o progresso do usuário no desafio
+                              const currentProgress = challenge.user_progress || 0;
+                              await updateChallengeProgress(challenge.id, { 
+                                progress: currentProgress + 1, 
+                                notes: `Completado em ${new Date().toLocaleDateString('pt-BR')}` 
+                              });
+                            } catch (err) {
+                              console.error('Erro ao completar desafio:', err);
+                              // Adicionar notificação de erro se necessário
+                            }
+                          }}
+                          className="w-full sm:flex-1 px-3 sm:px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 bg-gray-900 text-white hover:bg-gray-800 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
+                        >
+                          Completar Hoje
+                        </button>
+                        
+                        {/* Secondary button */}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleChallengeDetailClick(challenge)}
+                            className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 hover:shadow-sm flex items-center justify-center"
+                            title="Ver detalhes do desafio"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        
+        {/* Estado vazio para desafios ativos */}
+        {!challengesLoading && activeChallenges.length === 0 && (
+          <div className="mb-8 sm:mb-12">
+            <div className="flex items-center justify-between mb-6 sm:mb-8">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2 sm:gap-3">
+                <span className="text-2xl sm:text-3xl">🏆</span>
+                Desafios Ativos
+              </h2>
+              <button
+                onClick={() => setShowChallenges(true)}
+                className="text-sm text-gray-600 hover:text-gray-900 font-medium transition-colors duration-200"
+              >
+                Explorar desafios
+              </button>
+            </div>
+            
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 sm:p-12 text-center">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-2xl">🎯</span>
+              </div>
+              <h3 className="text-lg sm:text-xl font-semibold text-gray-800 mb-2">
+                Nenhum desafio ativo
+              </h3>
+              <p className="text-gray-500 leading-relaxed mb-6">
+                Participe de desafios em grupo para se motivar ainda mais na sua jornada de hábitos
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  onClick={() => setShowGroups(true)}
+                  className="px-6 py-3 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all duration-200 font-medium"
+                >
+                  Explorar Grupos
+                </button>
+                <button
+                  onClick={() => setShowChallenges(true)}
+                  className="px-6 py-3 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-medium"
+                >
+                  Ver Desafios
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Mobile optimized edit modal */}
@@ -1469,7 +1689,7 @@ const Dashboard = () => {
                           <path fillRule="evenodd"
                           d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
                           clipRule="evenodd"></path>
-                        </svg>
+                      </svg>
                       </span>
                     </label>
                     <label className="cursor-pointer ml-4 text-gray-700" htmlFor="edit-reminder-enabled">
@@ -1635,7 +1855,7 @@ const Dashboard = () => {
               >
                 <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+              </svg>
               </button>
             </div>
             <div className="overflow-y-auto max-h-[calc(95vh-80px)]">
@@ -1693,11 +1913,182 @@ const Dashboard = () => {
               </button>
             </div>
             <div className="overflow-y-auto max-h-[calc(95vh-80px)]">
-              <Challenges />
+              <Challenges onChallengeUpdate={fetchActiveChallenges} />
             </div>
           </div>
         </div>
       )}
+
+      {/* Modal de Detalhes do Desafio */}
+      {showChallengeDetail && selectedChallenge && (
+        <ChallengeDetail 
+          challenge={selectedChallenge}
+          onClose={() => setShowChallengeDetail(false)}
+          onUpdate={fetchActiveChallenges}
+        />
+      )}
+    </div>
+  );
+};
+
+// Componente de detalhes do desafio
+const ChallengeDetail = ({ challenge, onClose, onUpdate }) => {
+  const { api } = useApi();
+  const [participants, setParticipants] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchParticipants = async () => {
+      try {
+        setLoading(true);
+        const participantsData = await api.getChallengeParticipants(challenge.id);
+        setParticipants(Array.isArray(participantsData) ? participantsData : []);
+      } catch (err) {
+        console.error('Erro ao carregar participantes:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchParticipants();
+  }, [challenge.id, api]);
+
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('pt-BR');
+  };
+
+  const daysRemaining = Math.ceil((new Date(challenge.end_date) - new Date()) / (1000 * 60 * 60 * 24));
+  const isActive = daysRemaining > 0;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[95vh] overflow-hidden">
+        <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900">{challenge.name}</h2>
+            <p className="text-sm text-gray-600 mt-1">Grupo: {challenge.group?.name}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+          >
+            <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        
+        <div className="overflow-y-auto max-h-[calc(95vh-120px)] p-4 sm:p-6">
+          {/* Informações do desafio */}
+          <div className="mb-6">
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <h3 className="font-semibold text-gray-900 mb-2">Descrição</h3>
+              <p className="text-gray-700">{challenge.description || 'Sem descrição'}</p>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-blue-50 rounded-lg p-3">
+                <div className="text-xs text-blue-600 font-medium">Hábito</div>
+                <div className="text-sm font-bold text-blue-900">{challenge.habit_name}</div>
+              </div>
+              
+              <div className="bg-green-50 rounded-lg p-3">
+                <div className="text-xs text-green-600 font-medium">Meta</div>
+                <div className="text-sm font-bold text-green-900">{challenge.goal_value} {challenge.goal_type}</div>
+              </div>
+              
+              <div className="bg-purple-50 rounded-lg p-3">
+                <div className="text-xs text-purple-600 font-medium">Período</div>
+                <div className="text-sm font-bold text-purple-900">
+                  {formatDate(challenge.start_date)} - {formatDate(challenge.end_date)}
+                </div>
+              </div>
+              
+              <div className={`rounded-lg p-3 ${isActive ? 'bg-green-50' : 'bg-red-50'}`}>
+                <div className={`text-xs font-medium ${isActive ? 'text-green-600' : 'text-red-600'}`}>
+                  Status
+                </div>
+                <div className={`text-sm font-bold ${isActive ? 'text-green-900' : 'text-red-900'}`}>
+                  {isActive ? `${daysRemaining} dias restantes` : 'Finalizado'}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Lista de participantes */}
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-4">
+              Participantes ({participants.length})
+            </h3>
+            
+            {loading ? (
+              <div className="text-center py-8 text-gray-500">
+                Carregando participantes...
+              </div>
+            ) : participants.length > 0 ? (
+              <div className="space-y-3">
+                {participants
+                  .sort((a, b) => (b.progress || 0) - (a.progress || 0))
+                  .map((participant, index) => (
+                  <div key={participant.id} className="bg-white border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                          index === 0 ? 'bg-yellow-100 text-yellow-700' :
+                          index === 1 ? 'bg-gray-100 text-gray-700' :
+                          index === 2 ? 'bg-orange-100 text-orange-700' :
+                          'bg-blue-100 text-blue-700'
+                        }`}>
+                          {index + 1}
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-900">
+                            {participant.user?.username}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Entrou em {formatDate(participant.joined_at)}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="text-right">
+                        <div className="font-bold text-gray-900">
+                          {participant.progress || 0} / {challenge.goal_value}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {Math.round(((participant.progress || 0) / challenge.goal_value) * 100)}% concluído
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {participant.notes && (
+                      <div className="mt-3 p-2 bg-gray-50 rounded text-sm text-gray-700">
+                        <strong>Notas:</strong> {participant.notes}
+                      </div>
+                    )}
+                    
+                    {/* Barra de progresso */}
+                    <div className="mt-3">
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="h-2 rounded-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-300"
+                          style={{ 
+                            width: `${Math.min(((participant.progress || 0) / challenge.goal_value) * 100, 100)}%` 
+                          }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                Nenhum participante encontrado
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

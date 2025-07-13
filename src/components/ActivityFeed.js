@@ -30,8 +30,10 @@ const ActivityFeed = () => {
 
   const handleReaction = async (activityId, reactionType) => {
     try {
-      await api.reactToActivity(activityId, reactionType);
-      await fetchFeed(); // Recarregar para atualizar reações
+      // TODO: Implementar endpoints de atividade no backend
+      // await api.reactToActivity(activityId, reactionType);
+      // await fetchFeed(); // Recarregar para atualizar reações
+      console.log('Funcionalidade de feed em desenvolvimento!');
     } catch (err) {
       console.error('Erro ao reagir:', err);
     }
@@ -39,8 +41,10 @@ const ActivityFeed = () => {
 
   const handleRemoveReaction = async (activityId) => {
     try {
-      await api.removeReaction(activityId);
-      await fetchFeed();
+      // TODO: Implementar endpoints de atividade no backend
+      // await api.removeReaction(activityId);
+      // await fetchFeed();
+      console.log('Funcionalidade de feed em desenvolvimento!');
     } catch (err) {
       console.error('Erro ao remover reação:', err);
     }
@@ -48,9 +52,12 @@ const ActivityFeed = () => {
 
   const handleComment = async (activityId, comment) => {
     try {
-      const newComment = await api.commentOnActivity(activityId, comment);
-      await fetchFeed();
-      return newComment;
+      // TODO: Implementar endpoints de atividade no backend
+      // const newComment = await api.commentOnActivity(activityId, comment);
+      // await fetchFeed();
+      // return newComment;
+      console.log('Funcionalidade de feed em desenvolvimento!');
+      return null;
     } catch (err) {
       console.error('Erro ao comentar:', err);
       throw err;

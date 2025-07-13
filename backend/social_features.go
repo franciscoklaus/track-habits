@@ -258,7 +258,7 @@ func cancelFriendRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 // Criar atividade no feed
-func createFeedActivity(userID int, activityType string, habitID *int, goalCompletionID *int, metadata map[string]interface{}) error {
+func createFeedActivity(userID int, activityType string, habitID *int, goalCompletionID *int, challengeID *int, metadata map[string]interface{}) error {
 	metadataJSON, _ := json.Marshal(metadata)
 	
 	// Determinar visibilidade baseada no hábito (se fornecido)
@@ -277,9 +277,9 @@ func createFeedActivity(userID int, activityType string, habitID *int, goalCompl
 	}
 	
 	_, err := db.Exec(`
-		INSERT INTO activity_feeds (user_id, activity_type, habit_id, goal_completion_id, metadata, visibility) 
-		VALUES (?, ?, ?, ?, ?, ?)
-	`, userID, activityType, habitID, goalCompletionID, metadataJSON, visibility)
+		INSERT INTO activity_feeds (user_id, activity_type, habit_id, goal_completion_id, challenge_id, metadata, visibility) 
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+	`, userID, activityType, habitID, goalCompletionID, challengeID, metadataJSON, visibility)
 	
 	return err
 }
@@ -304,23 +304,25 @@ func getFeed(w http.ResponseWriter, r *http.Request) {
 	
 	query := `
 		SELECT DISTINCT af.id, af.user_id, af.activity_type, af.habit_id, af.goal_completion_id, 
-			   af.metadata, af.visibility, af.created_at,
+			   af.challenge_id, af.metadata, af.visibility, af.created_at,
 			   u.id, u.username, u.email,
-			   h.id, h.name, h.icon
+			   h.id, h.name, h.icon,
+			   c.id, c.name, c.habit_name
 		FROM activity_feeds af
 		JOIN users u ON u.id = af.user_id
 		LEFT JOIN habits h ON h.id = af.habit_id
-		WHERE af.user_id IN (
+		LEFT JOIN challenges c ON c.id = af.challenge_id
+		WHERE (af.user_id = ? OR af.user_id IN (
 			SELECT CASE WHEN f.user_id = ? THEN f.friend_id ELSE f.user_id END
 			FROM friendships f 
 			WHERE (f.user_id = ? OR f.friend_id = ?) AND f.status = 'accepted'
-		) AND af.visibility IN ('public', 'friends')
+		)) AND af.visibility IN ('public', 'friends')
 		AND (af.habit_id IS NULL OR h.visibility != 'private')
 		ORDER BY af.created_at DESC
 		LIMIT ? OFFSET ?
 	`
 	
-	rows, err := db.Query(query, userID, userID, userID, limit, offset)
+	rows, err := db.Query(query, userID, userID, userID, userID, limit, offset)
 	if err != nil {
 		log.Printf("Erro ao buscar feed: %v", err)
 		http.Error(w, `{"error": "Erro interno do servidor"}`, http.StatusInternalServerError)
@@ -333,13 +335,16 @@ func getFeed(w http.ResponseWriter, r *http.Request) {
 		var af ActivityFeed
 		var u User
 		var h Habit
+		var c Challenge
 		var metadataJSON []byte
 		var habitID, habitName, habitIcon sql.NullString
+		var challengeID, challengeName, challengeHabitName sql.NullString
 		
 		err := rows.Scan(&af.ID, &af.UserID, &af.ActivityType, &af.HabitID, &af.GoalCompletionID,
-						&metadataJSON, &af.Visibility, &af.CreatedAt,
+						&af.ChallengeID, &metadataJSON, &af.Visibility, &af.CreatedAt,
 						&u.ID, &u.Username, &u.Email,
-						&habitID, &habitName, &habitIcon)
+						&habitID, &habitName, &habitIcon,
+						&challengeID, &challengeName, &challengeHabitName)
 		if err != nil {
 			log.Printf("Erro ao escanear atividade: %v", err)
 			continue
@@ -358,6 +363,14 @@ func getFeed(w http.ResponseWriter, r *http.Request) {
 			h.Name = habitName.String
 			h.Icon = habitIcon.String
 			af.Habit = &h
+		}
+		
+		// Adicionar desafio se existir
+		if challengeID.Valid {
+			c.ID, _ = strconv.Atoi(challengeID.String)
+			c.Name = challengeName.String
+			c.HabitName = challengeHabitName.String
+			af.Challenge = &c
 		}
 		
 		// Buscar contagem de reações

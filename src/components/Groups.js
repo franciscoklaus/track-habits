@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { apiService } from '../services/apiService';
+import { apiService, useApi } from '../services/apiService';
 import './Groups.css';
 
 const Groups = () => {
+  const { user } = useApi();
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showGroupDetail, setShowGroupDetail] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [groupToDelete, setGroupToDelete] = useState(null);
   const [newGroup, setNewGroup] = useState({
     name: '',
     description: '',
@@ -67,6 +70,32 @@ const Groups = () => {
     }
   };
 
+  const handleDeleteGroup = async (groupId) => {
+    setGroupToDelete(groupId);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDeleteGroup = async () => {
+    if (!groupToDelete) return;
+    
+    try {
+      await apiService.deleteGroup(groupToDelete);
+      // Atualizar a lista para refletir a mudança
+      await fetchGroups();
+    } catch (err) {
+      setError('Erro ao deletar grupo');
+      console.error('Erro ao deletar grupo:', err);
+    } finally {
+      setShowDeleteModal(false);
+      setGroupToDelete(null);
+    }
+  };
+
+  const cancelDeleteGroup = () => {
+    setShowDeleteModal(false);
+    setGroupToDelete(null);
+  };
+
   const handleGroupClick = async (group) => {
     try {
       const groupDetail = await apiService.getGroup(group.id);
@@ -123,12 +152,22 @@ const Groups = () => {
             
             <div className="group-actions">
               {group.is_joined ? (
-                <button 
-                  className="btn btn-secondary"
-                  onClick={() => handleLeaveGroup(group.id)}
-                >
-                  Sair do Grupo
-                </button>
+                // Se é o criador do grupo, sempre mostrar botão de deletar
+                group.creator_id === user?.id ? (
+                  <button 
+                    className="btn btn-danger"
+                    onClick={() => handleDeleteGroup(group.id)}
+                  >
+                    Deletar Grupo
+                  </button>
+                ) : (
+                  <button 
+                    className="btn btn-secondary"
+                    onClick={() => handleLeaveGroup(group.id)}
+                  >
+                    Sair do Grupo
+                  </button>
+                )
               ) : (
                 <button 
                   className="btn btn-primary"
@@ -220,6 +259,50 @@ const Groups = () => {
         </div>
       )}
 
+      {/* Modal Confirmar Exclusão */}
+      {showDeleteModal && (
+        <div className="modal-overlay">
+          <div className="modal confirm-modal">
+            <div className="modal-header">
+              <h3>Confirmar Exclusão</h3>
+              <button 
+                className="close-btn"
+                onClick={cancelDeleteGroup}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="modal-body">
+              <div className="warning-icon">⚠️</div>
+              <p className="warning-text">
+                Tem certeza que deseja deletar este grupo?
+              </p>
+              <p className="warning-subtext">
+                Esta ação não pode ser desfeita. Todos os dados do grupo, incluindo desafios e histórico, serão perdidos permanentemente.
+              </p>
+            </div>
+            
+            <div className="form-actions">
+              <button 
+                type="button" 
+                className="btn btn-secondary"
+                onClick={cancelDeleteGroup}
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-danger"
+                onClick={confirmDeleteGroup}
+              >
+                Deletar Grupo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Group Detail Modal */}
       {showGroupDetail && selectedGroup && (
         <GroupDetail 
@@ -240,24 +323,24 @@ const GroupDetail = ({ group, onClose, onUpdate }) => {
   const [activeTab, setActiveTab] = useState('members');
 
   useEffect(() => {
+    const fetchGroupData = async () => {
+      try {
+        setLoading(true);
+        const [membersData, challengesData] = await Promise.all([
+          apiService.getGroupMembers(group.id),
+          apiService.getGroupChallenges(group.id)
+        ]);
+        setMembers(Array.isArray(membersData) ? membersData : []);
+        setChallenges(Array.isArray(challengesData) ? challengesData : []);
+      } catch (err) {
+        console.error('Erro ao carregar dados do grupo:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchGroupData();
   }, [group.id]);
-
-  const fetchGroupData = async () => {
-    try {
-      setLoading(true);
-      const [membersData, challengesData] = await Promise.all([
-        apiService.getGroupMembers(group.id),
-        apiService.getGroupChallenges(group.id)
-      ]);
-      setMembers(Array.isArray(membersData) ? membersData : []);
-      setChallenges(Array.isArray(challengesData) ? challengesData : []);
-    } catch (err) {
-      console.error('Erro ao carregar dados do grupo:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="modal-overlay">

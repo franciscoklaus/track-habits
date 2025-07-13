@@ -1,0 +1,30 @@
+Database tables initialized successfully
+Server starting on :8080
+2025/07/11 16:51:46 Buscando participantes para o desafio 2
+2025/07/11 16:51:46 Participante encontrado: ID=19, UserID=1, Username=Francisco Klaus
+2025/07/11 16:51:46 Erro ao escanear participante: sql: Scan error on column index 4, name "notes": converting NULL to string is unsupported
+2025/07/11 16:51:46 Erro ao escanear participante: sql: Scan error on column index 4, name "notes": converting NULL to string is unsupported
+2025/07/11 16:51:46 Total de participantes encontrados: 1
+2025/07/11 16:51:46 Buscando participantes para o desafio 2
+2025/07/11 16:51:46 Participante encontrado: ID=19, UserID=1, Username=Francisco Klaus
+2025/07/11 16:51:46 Erro ao escanear participante: sql: Scan error on column index 4, name "notes": converting NULL to string is unsupported
+2025/07/11 16:51:46 Erro ao escanear participante: sql: Scan error on column index 4, name "notes": converting NULL to string is unsupported
+2025/07/11 16:51:46 Total de participantes encontrados: 1
+2025/07/11 16:51:46 Buscando participantes para o desafio 2
+2025/07/11 16:51:46 Participante encontrado: ID=19, UserID=1, Username=Francisco Klaus
+2025/07/11 16:51:46 Erro ao escanear participante: sql: Scan error on column index 4, name "notes": converting NULL to string is unsupported
+2025/07/11 16:51:46 Erro ao escanear participante: sql: Scan error on column index 4, name "notes": converting NULL to string is unsupported
+2025/07/11 16:51:46 Total de participantes encontrados: 1
+2025/07/11 16:51:55 Buscando participantes para o desafio 3
+2025/07/11 16:51:55 Participante encontrado: ID=16, UserID=4, Username=Geraldo Silva
+2025/07/11 16:51:55 Erro ao escanear participante: sql: Scan error on column index 4, name "notes": converting NULL to string is unsupported
+2025/07/11 16:51:55 Total de participantes encontrados: 1
+2025/07/11 16:52:02 Buscando participantes para o desafio 1
+2025/07/11 16:52:02 Participante encontrado: ID=1, UserID=1, Username=Francisco Klaus
+2025/07/11 16:52:02 Total de participantes encontrados: 1
+2025/07/11 16:52:02 Buscando participantes para o desafio 1
+2025/07/11 16:52:02 Participante encontrado: ID=1, UserID=1, Username=Francisco Klaus
+2025/07/11 16:52:02 Total de participantes encontrados: 1
+2025/07/11 16:52:02 Buscando participantes para o desafio 1
+2025/07/11 16:52:02 Participante encontrado: ID=1, UserID=1, Username=Francisco Klaus
+2025/07/11 16:52:02 Total de participantes encontrados: 1

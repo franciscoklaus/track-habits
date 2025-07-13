@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -103,12 +104,14 @@ type ActivityFeed struct {
 	ActivityType     string                 `json:"activity_type"`
 	HabitID          *int                   `json:"habit_id"`
 	GoalCompletionID *int                   `json:"goal_completion_id"`
+	ChallengeID      *int                   `json:"challenge_id"`
 	Metadata         map[string]interface{} `json:"metadata"`
 	Visibility       string                 `json:"visibility"`
 	CreatedAt        time.Time              `json:"created_at"`
 	// Dados relacionados
 	User         *User         `json:"user,omitempty"`
 	Habit        *Habit        `json:"habit,omitempty"`
+	Challenge    *Challenge    `json:"challenge,omitempty"`
 	ReactionCount map[string]int `json:"reaction_count,omitempty"`
 	UserReaction *string        `json:"user_reaction,omitempty"`
 	CommentCount int            `json:"comment_count,omitempty"`
@@ -189,6 +192,7 @@ type Challenge struct {
 	Group            *Group `json:"group,omitempty"`
 	ParticipantCount int   `json:"participant_count,omitempty"`
 	IsParticipating  bool  `json:"is_participating,omitempty"`
+	UserProgress     int   `json:"user_progress,omitempty"`
 }
 
 type ChallengeParticipant struct {
@@ -196,7 +200,7 @@ type ChallengeParticipant struct {
 	ChallengeID int       `json:"challenge_id"`
 	UserID      int       `json:"user_id"`
 	Progress    int       `json:"progress"`
-	Notes       string    `json:"notes,omitempty"`
+	Notes       *string   `json:"notes,omitempty"`
 	JoinedAt    time.Time `json:"joined_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	// Dados relacionados
@@ -331,8 +335,14 @@ func main() {
 
 	handler := c.Handler(r)
 
-	fmt.Println("Server starting on :8080")
-	log.Fatal(http.ListenAndServe(":8080", handler))
+	// Start server
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	
+	fmt.Printf("Server starting on :%s\n", port)
+	log.Fatal(http.ListenAndServe(":"+port, handler))
 }
 
 func initDB() {
@@ -413,12 +423,14 @@ func initDB() {
 		activity_type VARCHAR(50) NOT NULL,
 		habit_id INT,
 		goal_completion_id INT,
+		challenge_id INT,
 		metadata JSON,
 		visibility ENUM('public', 'private', 'friends') DEFAULT 'public',
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
 		FOREIGN KEY (habit_id) REFERENCES habits(id) ON DELETE CASCADE,
-		FOREIGN KEY (goal_completion_id) REFERENCES goal_completions(id) ON DELETE CASCADE
+		FOREIGN KEY (goal_completion_id) REFERENCES goal_completions(id) ON DELETE CASCADE,
+		FOREIGN KEY (challenge_id) REFERENCES challenges(id) ON DELETE CASCADE
 	)`
 
 	createActivityReactionsTable := `
@@ -506,7 +518,7 @@ func initDB() {
 		UNIQUE KEY unique_participation (challenge_id, user_id)
 	)`
 
-	tables := []string{createUsersTable, createHabitsTable, createEntriesTable, createGoalCompletionsTable, createFriendshipsTable, createActivityFeedsTable, createActivityReactionsTable, createActivityCommentsTable, createGroupsTable, createGroupMembersTable, createChallengesTable, createChallengeParticipantsTable}
+	tables := []string{createUsersTable, createHabitsTable, createEntriesTable, createGoalCompletionsTable, createFriendshipsTable, createGroupsTable, createGroupMembersTable, createChallengesTable, createChallengeParticipantsTable, createActivityFeedsTable, createActivityReactionsTable, createActivityCommentsTable}
 	
 	for _, table := range tables {
 		if _, err := db.Exec(table); err != nil {
@@ -568,14 +580,17 @@ func generateJWT(userID int) (string, error) {
 
 func authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		log.Printf("Auth middleware - Request path: %s", r.URL.Path)
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
+			log.Printf("Auth middleware - No authorization header")
 			http.Error(w, "Authorization header required", http.StatusUnauthorized)
 			return
 		}
 
 		bearerToken := strings.Split(authHeader, " ")
 		if len(bearerToken) != 2 || bearerToken[0] != "Bearer" {
+			log.Printf("Auth middleware - Invalid header format: %s", authHeader)
 			http.Error(w, "Invalid authorization header format", http.StatusUnauthorized)
 			return
 		}
@@ -588,19 +603,24 @@ func authMiddleware(next http.Handler) http.Handler {
 		})
 
 		if err != nil {
+			log.Printf("Auth middleware - Token parse error: %v", err)
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
 
 		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 			userID := int(claims["user_id"].(float64))
+			log.Printf("Auth middleware - Valid token for user: %d", userID)
 			r.Header.Set("user_id", strconv.Itoa(userID))
 			next.ServeHTTP(w, r)
 		} else {
+			log.Printf("Auth middleware - Invalid token claims")
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 		}
 	})
 }
+
+
 
 func register(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
@@ -1167,11 +1187,12 @@ func createHabitEntry(w http.ResponseWriter, r *http.Request) {
 		metadata["streak_count"] = streak
 	}
 	
-	err = createFeedActivity(userID, "habit_completed", &habitID, nil, metadata)
-	if err != nil {
-		log.Printf("Erro ao criar atividade no feed: %v", err)
-		// Não interromper o fluxo por erro no feed
-	}
+	// Commented out feed activity creation - not implemented yet
+	// err = createFeedActivity(userID, "habit_completed", &habitID, nil, nil, metadata)
+	// if err != nil {
+	//	log.Printf("Erro ao criar atividade no feed: %v", err)
+	// 	// Não interromper o fluxo por erro no feed
+	// }
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -1354,7 +1375,8 @@ func createGoalCompletion(w http.ResponseWriter, r *http.Request) {
 	var habitName string
 	db.QueryRow("SELECT name FROM habits WHERE id = ?", habitID).Scan(&habitName)
 
-	// Criar atividade no feed quando meta for completada
+	// Criar atividade no feed quando meta for completada (commented out - not implemented yet)
+	/*
 	metadata := map[string]interface{}{
 		"habit_name": habitName,
 		"goal_type": completion.GoalType,
@@ -1363,11 +1385,12 @@ func createGoalCompletion(w http.ResponseWriter, r *http.Request) {
 		"notes": completion.Notes,
 	}
 	
-	err = createFeedActivity(userID, "goal_achieved", &habitID, &completion.ID, metadata)
+	err = createFeedActivity(userID, "goal_achieved", &habitID, &completion.ID, nil, metadata)
 	if err != nil {
 		log.Printf("Erro ao criar atividade no feed para meta completada: %v", err)
 		// Não interromper o fluxo por erro no feed
 	}
+	*/
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(completion)

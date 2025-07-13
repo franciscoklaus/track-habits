@@ -87,6 +87,10 @@ type AuthResponse struct {
 }
 
 // Estruturas para sistema de amigos e feed
+type FriendRequest struct {
+	Email string `json:"email"`
+}
+
 type Friendship struct {
 	ID        int       `json:"id"`
 	UserID    int       `json:"user_id"`
@@ -133,10 +137,6 @@ type ActivityComment struct {
 	Comment    string    `json:"comment"`
 	CreatedAt  time.Time `json:"created_at"`
 	User       *User     `json:"user,omitempty"`
-}
-
-type FriendRequest struct {
-	Email string `json:"email"`
 }
 
 type ReactionRequest struct {
@@ -188,11 +188,12 @@ type Challenge struct {
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
 	// Dados relacionados
-	Creator          *User `json:"creator,omitempty"`
-	Group            *Group `json:"group,omitempty"`
-	ParticipantCount int   `json:"participant_count,omitempty"`
-	IsParticipating  bool  `json:"is_participating,omitempty"`
-	UserProgress     int   `json:"user_progress,omitempty"`
+	Creator               *User `json:"creator,omitempty"`
+	Group                 *Group `json:"group,omitempty"`
+	ParticipantCount      int   `json:"participant_count,omitempty"`
+	IsParticipating       bool  `json:"is_participating,omitempty"`
+	UserProgress          int   `json:"user_progress,omitempty"`
+	HasCompletedParticipant bool `json:"has_completed_participant,omitempty"`
 }
 
 type ChallengeParticipant struct {
@@ -580,17 +581,14 @@ func generateJWT(userID int) (string, error) {
 
 func authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("Auth middleware - Request path: %s", r.URL.Path)
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			log.Printf("Auth middleware - No authorization header")
 			http.Error(w, "Authorization header required", http.StatusUnauthorized)
 			return
 		}
 
 		bearerToken := strings.Split(authHeader, " ")
 		if len(bearerToken) != 2 || bearerToken[0] != "Bearer" {
-			log.Printf("Auth middleware - Invalid header format: %s", authHeader)
 			http.Error(w, "Invalid authorization header format", http.StatusUnauthorized)
 			return
 		}
@@ -603,18 +601,15 @@ func authMiddleware(next http.Handler) http.Handler {
 		})
 
 		if err != nil {
-			log.Printf("Auth middleware - Token parse error: %v", err)
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
 
 		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 			userID := int(claims["user_id"].(float64))
-			log.Printf("Auth middleware - Valid token for user: %d", userID)
 			r.Header.Set("user_id", strconv.Itoa(userID))
 			next.ServeHTTP(w, r)
 		} else {
-			log.Printf("Auth middleware - Invalid token claims")
 			http.Error(w, "Invalid token", http.StatusUnauthorized)
 		}
 	})
@@ -914,10 +909,6 @@ func createHabit(w http.ResponseWriter, r *http.Request) {
 	query := "INSERT INTO habits (user_id, name, description, is_active, multipleUpdate, category, icon, goal, goal_type, reminder_enabled, reminder_time, reminder_times, visibility) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
 	result, err := db.Exec(query, userID, habit.Name, habit.Description, true, habit.MultipleUpdate, habit.Category, habit.Icon, habit.Goal, habit.GoalType, habit.ReminderEnabled, habit.ReminderTime, reminderTimesStr, habit.Visibility)
 	if err != nil {
-		log.Printf("Error creating habit: %v", err)
-		log.Printf("Query: %s", query)
-		log.Printf("Values: userID=%d, name=%s, description=%s, multipleUpdate=%v, category=%s, icon=%s, goal=%d, goal_type=%s, reminder_enabled=%v, reminder_time=%s, reminder_times=%s", 
-			userID, habit.Name, habit.Description, habit.MultipleUpdate, habit.Category, habit.Icon, habit.Goal, habit.GoalType, habit.ReminderEnabled, habit.ReminderTime, reminderTimesStr)
 		http.Error(w, "Error creating habit", http.StatusInternalServerError)
 		return
 	}
@@ -1500,7 +1491,7 @@ func checkGoalCompletion(w http.ResponseWriter, r *http.Request) {
 					 WHERE habit_id = ? AND period_start = ? AND period_end = ?`
 	err = db.QueryRow(existingQuery, habitID, periodStart, periodEnd).Scan(&existingCount)
 	if err != nil {
-		fmt.Printf("ERROR: Error checking existing completions: %v\n", err)
+		fmt.Printf("ERROR: Error checking existing completions: %v", err)
 		http.Error(w, "Error checking existing completions", http.StatusInternalServerError)
 		return
 	}

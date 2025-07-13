@@ -196,65 +196,96 @@ const Groups = () => {
 
       {/* Modal Criar Grupo */}
       {showCreateModal && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
-              <h3>Criar Novo Grupo</h3>
-              <button 
-                className="close-btn"
-                onClick={() => setShowCreateModal(false)}
-              >
-                ×
-              </button>
-            </div>
-            
-            <form onSubmit={handleCreateGroup}>
-              <div className="form-group">
-                <label htmlFor="name">Nome do Grupo *</label>
-                <input
-                  type="text"
-                  id="name"
-                  value={newGroup.name}
-                  onChange={(e) => setNewGroup({...newGroup, name: e.target.value})}
-                  required
-                />
-              </div>
-              
-              <div className="form-group">
-                <label htmlFor="description">Descrição</label>
-                <textarea
-                  id="description"
-                  value={newGroup.description}
-                  onChange={(e) => setNewGroup({...newGroup, description: e.target.value})}
-                  rows="3"
-                />
-              </div>
-              
-              <div className="form-group">
-                <label htmlFor="privacy">Privacidade</label>
-                <select
-                  id="privacy"
-                  value={newGroup.privacy}
-                  onChange={(e) => setNewGroup({...newGroup, privacy: e.target.value})}
-                >
-                  <option value="public">Público</option>
-                  <option value="private">Privado</option>
-                </select>
-              </div>
-              
-              <div className="form-actions">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-gray-900">Criar Novo Grupo</h3>
                 <button 
-                  type="button" 
-                  className="btn btn-secondary"
+                  className="text-gray-400 hover:text-gray-600 transition-colors p-1"
                   onClick={() => setShowCreateModal(false)}
                 >
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  Criar Grupo
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
               </div>
-            </form>
+              
+              <form onSubmit={handleCreateGroup} className="space-y-4">
+                <div>
+                  <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+                    Nome do Grupo *
+                  </label>
+                  <input
+                    type="text"
+                    id="name"
+                    value={newGroup.name}
+                    onChange={(e) => setNewGroup({...newGroup, name: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200"
+                    placeholder="Ex: Fitness Matinal, Leitura Diária..."
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
+                    Descrição
+                  </label>
+                  <textarea
+                    id="description"
+                    value={newGroup.description}
+                    onChange={(e) => setNewGroup({...newGroup, description: e.target.value})}
+                    rows="3"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200 resize-none"
+                    placeholder="Descreva o propósito e objetivos do grupo..."
+                  />
+                </div>
+                
+                <div>
+                  <label htmlFor="privacy" className="block text-sm font-medium text-gray-700 mb-2">
+                    Privacidade
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="privacy"
+                      value={newGroup.privacy}
+                      onChange={(e) => setNewGroup({...newGroup, privacy: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:border-gray-500 focus:ring-1 focus:ring-gray-500 transition-all duration-200 appearance-none bg-white"
+                    >
+                      <option value="public">🌍 Público - Qualquer pessoa pode entrar</option>
+                      <option value="private">🔒 Privado - Apenas convidados</option>
+                    </select>
+                    <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {newGroup.privacy === 'public' 
+                      ? 'Grupos públicos aparecem na busca e qualquer pessoa pode entrar'
+                      : 'Grupos privados são apenas para convidados específicos'
+                    }
+                  </p>
+                </div>
+                
+                <div className="flex gap-3 pt-4">
+                  <button 
+                    type="button" 
+                    className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 font-medium"
+                    onClick={() => setShowCreateModal(false)}
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="flex-1 px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-all duration-200 font-medium shadow-sm hover:shadow-md"
+                  >
+                    Criar Grupo
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}

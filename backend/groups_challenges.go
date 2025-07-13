@@ -45,7 +45,6 @@ func getGroups(w http.ResponseWriter, r *http.Request) {
 		err := rows.Scan(&g.ID, &g.Name, &g.Description, &g.Privacy, &g.CreatorID, &g.CreatedAt, &g.UpdatedAt,
 						&creator.ID, &creator.Username, &creator.Email, &g.MemberCount, &isJoinedInt)
 		if err != nil {
-			log.Printf("Erro ao escanear grupo: %v", err)
 			continue
 		}
 		g.Creator = &creator
@@ -415,7 +414,8 @@ func getChallenges(w http.ResponseWriter, r *http.Request) {
 			   g.id, g.name, g.privacy,
 			   (SELECT COUNT(*) FROM challenge_participants WHERE challenge_id = c.id) as participant_count,
 			   (SELECT COUNT(*) FROM challenge_participants WHERE challenge_id = c.id AND user_id = ?) as is_participating,
-			   COALESCE((SELECT progress FROM challenge_participants WHERE challenge_id = c.id AND user_id = ?), 0) as user_progress
+			   COALESCE((SELECT progress FROM challenge_participants WHERE challenge_id = c.id AND user_id = ?), 0) as user_progress,
+			   (SELECT COUNT(*) > 0 FROM challenge_participants WHERE challenge_id = c.id AND progress >= c.goal_value) as has_completed_participant
 		FROM challenges c
 		JOIN users u ON u.id = c.creator_id
 		JOIN ` + "`groups`" + ` g ON g.id = c.group_id
@@ -439,19 +439,20 @@ func getChallenges(w http.ResponseWriter, r *http.Request) {
 		var group Group
 		var isParticipatingInt int
 		var userProgress int
+		var hasCompletedParticipantInt int
 		err := rows.Scan(&c.ID, &c.GroupID, &c.Name, &c.Description, &c.HabitName, &c.GoalValue, &c.GoalType,
 						&c.StartDate, &c.EndDate, &c.Status, &c.CreatorID, &c.CreatedAt, &c.UpdatedAt,
 						&creator.ID, &creator.Username, &creator.Email,
 						&group.ID, &group.Name, &group.Privacy,
-						&c.ParticipantCount, &isParticipatingInt, &userProgress)
+						&c.ParticipantCount, &isParticipatingInt, &userProgress, &hasCompletedParticipantInt)
 		if err != nil {
-			log.Printf("Erro ao escanear desafio: %v", err)
 			continue
 		}
 		c.Creator = &creator
 		c.Group = &group
 		c.IsParticipating = isParticipatingInt > 0
 		c.UserProgress = userProgress
+		c.HasCompletedParticipant = hasCompletedParticipantInt > 0
 		challenges = append(challenges, c)
 	}
 
@@ -497,10 +498,6 @@ func createChallenge(w http.ResponseWriter, r *http.Request) {
 		req.GoalValue = 7 // 7 dias por padrão
 	}
 
-	// Debug logs
-	log.Printf("Creating challenge with goal_type: '%s', goal_value: %d", req.GoalType, req.GoalValue)
-	log.Printf("Challenge data: %+v", req)
-
 	// Criar o desafio
 	query := `
 		INSERT INTO challenges (group_id, name, description, habit_name, goal_value, goal_type, 
@@ -510,7 +507,6 @@ func createChallenge(w http.ResponseWriter, r *http.Request) {
 	result, err := db.Exec(query, groupID, req.Name, req.Description, req.HabitName, 
 						  req.GoalValue, req.GoalType, req.StartDate, req.EndDate, userID)
 	if err != nil {
-		log.Printf("Erro ao criar desafio: %v", err)
 		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
 		return
 	}
@@ -655,7 +651,7 @@ func updateChallenge(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"message": "Desafio atualizado com sucesso"})
 }
 
-// Deletar desafio (apenas criador)
+// Deletar desafio (apenas criador e se não foi completado por ninguém)
 func deleteChallenge(w http.ResponseWriter, r *http.Request) {
 	userID := getUserID(r)
 	vars := mux.Vars(r)
@@ -671,10 +667,10 @@ func deleteChallenge(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Desafio não encontrado", http.StatusNotFound)
-			return
+		} else {
+			log.Printf("Erro ao verificar criador do desafio: %v", err)
+			http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
 		}
-		log.Printf("Erro ao verificar criador do desafio: %v", err)
-		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
 		return
 	}
 
@@ -683,20 +679,76 @@ func deleteChallenge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Deletar desafio (cascade deletará participantes)
-	result, err := db.Exec("DELETE FROM challenges WHERE id = ?", challengeID)
+	// Verificar se algum participante completou o desafio
+	var goalValue int
+	var hasCompletedParticipant bool
+	
+	err = db.QueryRow("SELECT goal_value FROM challenges WHERE id = ?", challengeID).Scan(&goalValue)
+	if err != nil {
+		log.Printf("Erro ao obter meta do desafio: %v", err)
+		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
+		return
+	}
+
+	err = db.QueryRow(`
+		SELECT EXISTS(
+			SELECT 1 FROM challenge_participants 
+			WHERE challenge_id = ? AND progress >= ?
+		)
+	`, challengeID, goalValue).Scan(&hasCompletedParticipant)
+	
+	if err != nil {
+		log.Printf("Erro ao verificar participantes completados: %v", err)
+		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
+		return
+	}
+
+	if hasCompletedParticipant {
+		http.Error(w, "Não é possível deletar um desafio que já foi completado por algum participante", http.StatusBadRequest)
+		return
+	}
+
+	// Iniciar transação para deletar tudo relacionado ao desafio
+	tx, err := db.Begin()
+	if err != nil {
+		log.Printf("Erro ao iniciar transação: %v", err)
+		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	// Deletar participações no desafio
+	_, err = tx.Exec("DELETE FROM challenge_participants WHERE challenge_id = ?", challengeID)
+	if err != nil {
+		log.Printf("Erro ao deletar participações do desafio: %v", err)
+		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
+		return
+	}
+
+	// Deletar atividades do feed relacionadas ao desafio
+	_, err = tx.Exec("DELETE FROM activity_feeds WHERE challenge_id = ?", challengeID)
+	if err != nil {
+		log.Printf("Erro ao deletar atividades do desafio: %v", err)
+		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
+		return
+	}
+
+	// Deletar o desafio
+	_, err = tx.Exec("DELETE FROM challenges WHERE id = ?", challengeID)
 	if err != nil {
 		log.Printf("Erro ao deletar desafio: %v", err)
 		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
 		return
 	}
 
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		http.Error(w, "Desafio não encontrado", http.StatusNotFound)
+	// Confirmar transação
+	if err := tx.Commit(); err != nil {
+		log.Printf("Erro ao confirmar transação: %v", err)
+		http.Error(w, "Erro interno do servidor", http.StatusInternalServerError)
 		return
 	}
 
+	log.Printf("Desafio %d deletado com sucesso pelo usuário %d", challengeID, userID)
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { apiService } from '../services/apiService';
+import { apiService, useApi } from '../services/apiService';
 import './Challenges.css';
 
 const Challenges = ({ onChallengeUpdate }) => {
+  const { user } = useApi();
   const [challenges, setChallenges] = useState([]);
   const [groups, setGroups] = useState([]);
   const [selectedChallenge, setSelectedChallenge] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showChallengeDetail, setShowChallengeDetail] = useState(false);
+  const [editingChallenge, setEditingChallenge] = useState(null);
   const [newChallenge, setNewChallenge] = useState({
     name: '',
     description: '',
@@ -97,6 +100,56 @@ const Challenges = ({ onChallengeUpdate }) => {
     } catch (err) {
       setError('Erro ao sair do desafio');
       console.error('Erro ao sair do desafio:', err);
+    }
+  };
+
+  const handleEditChallenge = (challenge) => {
+    setEditingChallenge({
+      ...challenge,
+      start_date: new Date(challenge.start_date).toISOString().split('T')[0],
+      end_date: new Date(challenge.end_date).toISOString().split('T')[0]
+    });
+    setShowEditModal(true);
+  };
+
+  const handleUpdateChallenge = async (e) => {
+    e.preventDefault();
+    try {
+      const updatedChallenge = await apiService.updateChallenge(editingChallenge.id, {
+        name: editingChallenge.name,
+        description: editingChallenge.description,
+        habit_name: editingChallenge.habit_name,
+        goal_value: parseInt(editingChallenge.goal_value),
+        goal_type: editingChallenge.goal_type,
+        start_date: new Date(editingChallenge.start_date).toISOString(),
+        end_date: new Date(editingChallenge.end_date).toISOString()
+      });
+      
+      setChallenges(challenges.map(c => c.id === editingChallenge.id ? updatedChallenge : c));
+      setShowEditModal(false);
+      setEditingChallenge(null);
+      
+      // Notificar o Dashboard para atualizar desafios ativos
+      if (onChallengeUpdate) {
+        await onChallengeUpdate();
+      }
+    } catch (err) {
+      setError('Erro ao atualizar desafio: ' + err.message);
+      console.error('Erro ao atualizar desafio:', err);
+    }
+  };
+
+  const handleDeleteChallenge = async (challengeId) => {
+    try {
+      await apiService.deleteChallenge(challengeId);
+      await fetchData(); // Atualizar a lista
+      // Notificar o Dashboard para atualizar desafios ativos
+      if (onChallengeUpdate) {
+        await onChallengeUpdate();
+      }
+    } catch (err) {
+      setError('Erro ao deletar desafio');
+      console.error('Erro ao deletar desafio:', err);
     }
   };
 
@@ -199,6 +252,7 @@ const Challenges = ({ onChallengeUpdate }) => {
             </div>
             
             <div className="challenge-actions">
+              {/* Ação principal: Participar ou Sair */}
               {challenge.is_participating ? (
                 <button 
                   className="btn btn-secondary"
@@ -213,6 +267,42 @@ const Challenges = ({ onChallengeUpdate }) => {
                 >
                   Participar
                 </button>
+              )}
+              
+              {/* Ações de administração para criadores */}
+              {challenge.creator_id === user?.id && (
+                <>
+                  <button 
+                    className="btn btn-warning"
+                    onClick={() => handleEditChallenge(challenge)}
+                    style={{ backgroundColor: '#f39c12', color: 'white', border: 'none' }}
+                  >
+                    Editar
+                  </button>
+                  
+                  <button 
+                    className="btn btn-danger"
+                    onClick={() => {
+                      // Verificar se algum participante já completou o desafio
+                      if (challenge.has_completed_participant) {
+                        setError('Não é possível deletar um desafio que já foi completado por algum participante');
+                        setTimeout(() => setError(''), 5000);
+                        return;
+                      }
+                      
+                      if (window.confirm('Tem certeza que deseja deletar este desafio? Esta ação não pode ser desfeita.')) {
+                        handleDeleteChallenge(challenge.id);
+                      }
+                    }}
+                    disabled={challenge.has_completed_participant}
+                    title={challenge.has_completed_participant 
+                      ? 'Não é possível deletar desafios que já foram completados'
+                      : 'Deletar desafio'
+                    }
+                  >
+                    Deletar
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -361,6 +451,130 @@ const Challenges = ({ onChallengeUpdate }) => {
                 </button>
                 <button type="submit" className="btn btn-primary">
                   Criar Desafio
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Editar Desafio */}
+      {showEditModal && editingChallenge && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h3>Editar Desafio</h3>
+              <button 
+                className="close-btn"
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingChallenge(null);
+                }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <form onSubmit={handleUpdateChallenge}>
+              <div className="modal-content">
+                <div className="form-group">
+                  <label htmlFor="edit_name">Nome do Desafio *</label>
+                  <input
+                    type="text"
+                    id="edit_name"
+                    value={editingChallenge.name}
+                    onChange={(e) => setEditingChallenge({...editingChallenge, name: e.target.value})}
+                    required
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label htmlFor="edit_description">Descrição</label>
+                  <textarea
+                    id="edit_description"
+                    value={editingChallenge.description}
+                    onChange={(e) => setEditingChallenge({...editingChallenge, description: e.target.value})}
+                    rows="3"
+                  />
+                </div>
+                
+                <div className="form-group">
+                  <label htmlFor="edit_habit_name">Nome do Hábito *</label>
+                  <input
+                    type="text"
+                    id="edit_habit_name"
+                    value={editingChallenge.habit_name}
+                    onChange={(e) => setEditingChallenge({...editingChallenge, habit_name: e.target.value})}
+                    required
+                  />
+                </div>
+                
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="edit_goal_type">Tipo de Meta</label>
+                    <select
+                      id="edit_goal_type"
+                      value={editingChallenge.goal_type}
+                      onChange={(e) => setEditingChallenge({...editingChallenge, goal_type: e.target.value})}
+                    >
+                      <option value="streak">Sequência (dias seguidos)</option>
+                      <option value="count">Contagem total</option>
+                      <option value="weekly">Meta semanal</option>
+                      <option value="monthly">Meta mensal</option>
+                    </select>
+                  </div>
+                  
+                  <div className="form-group">
+                    <label htmlFor="edit_goal_value">Valor da Meta *</label>
+                    <input
+                      type="number"
+                      id="edit_goal_value"
+                      value={editingChallenge.goal_value}
+                      onChange={(e) => setEditingChallenge({...editingChallenge, goal_value: e.target.value})}
+                      min="1"
+                      required
+                    />
+                  </div>
+                </div>
+                
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="edit_start_date">Data de Início *</label>
+                    <input
+                      type="date"
+                      id="edit_start_date"
+                      value={editingChallenge.start_date}
+                      onChange={(e) => setEditingChallenge({...editingChallenge, start_date: e.target.value})}
+                      required
+                    />
+                  </div>
+                  
+                  <div className="form-group">
+                    <label htmlFor="edit_end_date">Data de Fim *</label>
+                    <input
+                      type="date"
+                      id="edit_end_date"
+                      value={editingChallenge.end_date}
+                      onChange={(e) => setEditingChallenge({...editingChallenge, end_date: e.target.value})}
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+              
+              <div className="form-actions">
+                <button 
+                  type="button" 
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingChallenge(null);
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Atualizar Desafio
                 </button>
               </div>
             </form>

@@ -3,7 +3,7 @@ import { useState, useEffect, useContext, createContext, useCallback } from 'rea
 // apiService.js
 class ApiService {
   constructor() {
-    this.baseURL = 'http://localhost:8081/api';
+    this.baseURL = 'http://localhost:8080/api';
     this.token = localStorage.getItem('authToken');
   }
 
@@ -11,8 +11,6 @@ class ApiService {
   async request(url, options = {}) {
     // Garantir que temos o token mais atual do localStorage
     this.token = localStorage.getItem('authToken');
-    
-    console.log('API Request:', url, 'Token exists:', !!this.token); // Debug
     
     const config = {
       headers: {
@@ -25,9 +23,6 @@ class ApiService {
     // Adicionar token de autenticação se disponível
     if (this.token) {
       config.headers.Authorization = `Bearer ${this.token}`;
-      console.log('Adding Authorization header:', config.headers.Authorization?.substring(0, 20) + '...'); // Debug
-    } else {
-      console.log('No token available for request'); // Debug
     }
 
     try {
@@ -35,7 +30,6 @@ class ApiService {
       
       // Se o token expirou, limpar e redirecionar
       if (response.status === 401) {
-        console.log('Token expired, clearing auth'); // Debug
         this.clearAuth();
         window.location.href = '/login';
         throw new Error('Token expirado');
@@ -54,7 +48,6 @@ class ApiService {
       
       return null; // Para respostas 204 No Content
     } catch (error) {
-      console.error('API Request Error:', error);
       throw error;
     }
   }
@@ -77,7 +70,6 @@ class ApiService {
     // Sempre verificar o localStorage para ter o valor mais atual
     this.token = localStorage.getItem('authToken');
     const isAuth = !!this.token;
-    console.log('isAuthenticated check:', isAuth, 'Token:', this.token?.substring(0, 20) + '...'); // Debug
     return isAuth;
   }
 
@@ -106,7 +98,6 @@ class ApiService {
       this.setToken(response.token);
       localStorage.setItem('user', JSON.stringify(response.user));
     }
-    console.log(response)
     return response;
   }
 
@@ -122,7 +113,6 @@ class ApiService {
   // MÉTODOS DE HÁBITOS
   async getHabits() {
     const data = await this.request('/habits');
-    console.log('getHabits API response:', data); // Debug
     return Array.isArray(data) ? data : [];
   }
 
@@ -346,7 +336,7 @@ class ApiService {
   // Listar desafios ativos do usuário (filtrar apenas os que está participando e estão ativos)
   async getActiveChallenges() {
     const challenges = await this.request('/challenges');
-    // Filtrar apenas desafios ativos e que o usuário está participando
+    // Filtrar apenas desafios que o usuário está participando e que ainda estão dentro do período
     const now = new Date();
     return challenges.filter(challenge => {
       const startDate = new Date(challenge.start_date);
@@ -355,7 +345,7 @@ class ApiService {
       return challenge.is_participating && 
              (challenge.status === 'active' || 
               (challenge.status === 'upcoming' && startDate <= now)) && 
-             endDate > now;
+             endDate > now; // Ainda dentro do período, independente se foi completado ou não
     });
   }
 
@@ -506,7 +496,6 @@ export const useHabits = () => {
       setLoading(true);
       setError(null);
       const data = await api.getHabits();
-      console.log('Raw habits data from API:', data); // Debug
       setHabits(data || []);
     } catch (err) {
       setError(err.message);

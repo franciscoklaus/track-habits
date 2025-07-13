@@ -53,13 +53,12 @@ const FriendsSidebar = ({ isOpen, onClose, onFriendUpdate }) => {
 
     try {
       setLoading(true);
-      // TODO: Implementar endpoints de amizade no backend
-      // await api.sendFriendRequest(searchEmail.trim());
-      setMessage('Funcionalidade de amizade em desenvolvimento!');
+      await api.sendFriendRequest(searchEmail.trim());
+      setMessage('Solicitação de amizade enviada com sucesso!');
       setSearchEmail('');
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
-      setMessage(err.response?.data?.error || 'Erro ao enviar solicitação');
+      setMessage(err.message || 'Erro ao enviar solicitação');
       setTimeout(() => setMessage(''), 3000);
     } finally {
       setLoading(false);
@@ -68,12 +67,11 @@ const FriendsSidebar = ({ isOpen, onClose, onFriendUpdate }) => {
 
   const handleAcceptRequest = async (requestId) => {
     try {
-      // TODO: Implementar endpoints de amizade no backend
-      // await api.acceptFriendRequest(requestId);
-      // await fetchFriends();
-      // await fetchFriendRequests();
-      // onFriendUpdate?.();
-      setMessage('Funcionalidade de amizade em desenvolvimento!');
+      await api.acceptFriendRequest(requestId);
+      await fetchFriends();
+      await fetchFriendRequests();
+      onFriendUpdate?.();
+      setMessage('Solicitação aceita com sucesso!');
       setTimeout(() => setMessage(''), 3000);
     } catch (err) {
       console.error('Erro ao aceitar solicitação:', err);
@@ -97,11 +95,10 @@ const FriendsSidebar = ({ isOpen, onClose, onFriendUpdate }) => {
       ),
       onConfirm: async () => {
         try {
-          // TODO: Implementar endpoints de amizade no backend
-          // await api.removeFriend(friendshipId);
-          // await fetchFriends();
-          // onFriendUpdate?.();
-          setMessage('Funcionalidade de amizade em desenvolvimento!');
+          await api.removeFriend(friendshipId);
+          await fetchFriends();
+          onFriendUpdate?.();
+          setMessage('Amigo removido com sucesso!');
           setTimeout(() => setMessage(''), 3000);
         } catch (err) {
           console.error('Erro ao remover amigo:', err);
@@ -127,10 +124,9 @@ const FriendsSidebar = ({ isOpen, onClose, onFriendUpdate }) => {
       ),
       onConfirm: async () => {
         try {
-          // TODO: Implementar endpoints de amizade no backend
-          // await api.cancelFriendRequest(requestId);
-          // await fetchFriendRequests();
-          setMessage('Funcionalidade de amizade em desenvolvimento!');
+          await api.cancelFriendRequest(requestId);
+          await fetchFriendRequests();
+          setMessage('Solicitação cancelada com sucesso!');
           setTimeout(() => setMessage(''), 3000);
         } catch (err) {
           console.error('Erro ao cancelar solicitação:', err);

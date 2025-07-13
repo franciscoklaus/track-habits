@@ -1,9 +1,12 @@
 // components/ActivityCard.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { apiService } from '../services/apiService';
 
 const ActivityCard = ({ activity, onReaction, onRemoveReaction, onComment }) => {
   const [showComments, setShowComments] = useState(false);
   const [comment, setComment] = useState('');
+  const [comments, setComments] = useState([]);
+  const [loadingComments, setLoadingComments] = useState(false);
 
   const formatTimeAgo = (dateString) => {
     const date = new Date(dateString);
@@ -142,9 +145,48 @@ const ActivityCard = ({ activity, onReaction, onRemoveReaction, onComment }) => 
     try {
       await onComment(activity.id, comment.trim());
       setComment('');
+      // Recarregar comentários após adicionar um novo
+      if (showComments) {
+        await fetchComments();
+      }
     } catch (err) {
       console.error('Erro ao comentar:', err);
     }
+  };
+
+  const fetchComments = async () => {
+    if (!activity.id) return;
+    
+    try {
+      setLoadingComments(true);
+      const commentsData = await apiService.getActivityComments(activity.id);
+      setComments(Array.isArray(commentsData) ? commentsData : []);
+    } catch (err) {
+      console.error('Erro ao carregar comentários:', err);
+      setComments([]);
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const toggleComments = async () => {
+    const newShowComments = !showComments;
+    setShowComments(newShowComments);
+    
+    if (newShowComments && comments.length === 0) {
+      await fetchComments();
+    }
+  };
+
+  const formatCommentTime = (dateString) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = Math.floor((now - date) / (1000 * 60 * 60));
+    
+    if (diffInHours < 1) return 'agora';
+    if (diffInHours < 24) return `${diffInHours}h`;
+    if (diffInHours < 168) return `${Math.floor(diffInHours / 24)}d`;
+    return date.toLocaleDateString('pt-BR');
   };
 
   return (
@@ -212,7 +254,7 @@ const ActivityCard = ({ activity, onReaction, onRemoveReaction, onComment }) => 
 
           {/* Comentários */}
           <button
-            onClick={() => setShowComments(!showComments)}
+            onClick={toggleComments}
             className="flex items-center space-x-1 px-3 py-1 rounded-full text-sm text-gray-500 hover:bg-gray-100 transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -249,9 +291,40 @@ const ActivityCard = ({ activity, onReaction, onRemoveReaction, onComment }) => 
             </button>
           </form>
           
-          {/* Lista de comentários - placeholder */}
-          <div className="mt-3 text-sm text-gray-500 italic">
-            Funcionalidade de comentários em desenvolvimento
+          {/* Lista de comentários */}
+          <div className="mt-4 space-y-3">
+            {loadingComments ? (
+              <div className="text-center text-gray-500 text-sm py-4">
+                Carregando comentários...
+              </div>
+            ) : comments.length > 0 ? (
+              comments.map((commentItem) => (
+                <div key={commentItem.id} className="flex space-x-3">
+                  <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                    <span className="text-white font-semibold text-xs">
+                      {commentItem.user?.username?.charAt(0).toUpperCase() || 'U'}
+                    </span>
+                  </div>
+                  <div className="flex-1">
+                    <div className="bg-gray-100 rounded-lg px-3 py-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-gray-900">
+                          {commentItem.user?.username || 'Usuário'}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {formatCommentTime(commentItem.created_at)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-700">{commentItem.comment}</p>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center text-gray-500 text-sm py-4">
+                Nenhum comentário ainda. Seja o primeiro a comentar!
+              </div>
+            )}
           </div>
         </div>
       )}

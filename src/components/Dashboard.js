@@ -1341,8 +1341,17 @@ const Dashboard = () => {
                 const daysRemaining = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
                 const progressPercentage = Math.min((daysElapsed / totalDays) * 100, 100);
                 
+                // Verificar se o desafio foi completado pelo usuário
+                const userProgress = challenge.user_progress || 0;
+                const isCompleted = userProgress >= challenge.goal_value;
+                const userProgressPercentage = Math.min((userProgress / challenge.goal_value) * 100, 100);
+                
                 return (
-                  <div key={challenge.id} className="group bg-white rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 overflow-hidden">
+                  <div key={challenge.id} className={`group rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border overflow-hidden ${
+                    isCompleted 
+                      ? 'bg-green-50 border-green-200 ring-2 ring-green-100' 
+                      : 'bg-white border-gray-100 hover:border-gray-200'
+                  }`}>
                     {/* Mobile optimized challenge header */}
                     <div className="p-4 sm:p-6 pb-3 sm:pb-4">
                       <div className="flex items-start justify-between mb-3 sm:mb-4">
@@ -1367,8 +1376,12 @@ const Dashboard = () => {
                         
                         {/* Mobile optimized status badges */}
                         <div className='flex flex-col gap-1 sm:gap-2 flex-shrink-0'>
-                          <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-700 border border-green-200 text-center">
-                            Ativo
+                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full border text-center ${
+                            isCompleted 
+                              ? 'bg-green-100 text-green-800 border-green-300' 
+                              : 'bg-green-100 text-green-700 border-green-200'
+                          }`}>
+                            {isCompleted ? 'Completado' : 'Ativo'}
                           </span>
                           <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-purple-50 text-purple-700 border border-purple-200 text-center">
                             {challenge.goal_value} {challenge.goal_type}
@@ -1384,32 +1397,55 @@ const Dashboard = () => {
                           </span>
                         </div>
                         
-                        {/* Progresso temporal */}
-                        <div className="mb-3">
+                        {/* Progresso do usuário */}
+                        <div className="mt-3 pt-3 border-t border-gray-200">
                           <div className="flex justify-between items-center mb-2">
-                            <span className="text-xs text-gray-600">
+                            <span className="text-xs text-gray-600">Seu progresso:</span>
+                            <span className={`text-xs font-medium ${
+                              isCompleted ? 'text-green-700' : 'text-gray-900'
+                            }`}>
+                              {userProgress} / {challenge.goal_value} {challenge.goal_type}
+                            </span>
+                          </div>
+                          
+                          {/* Barra de progresso do usuário */}
+                          <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                            <div 
+                              className={`h-2 rounded-full transition-all duration-300 ${
+                                isCompleted ? 'bg-green-500' : 'bg-blue-500'
+                              }`}
+                              style={{ width: `${userProgressPercentage}%` }}
+                            ></div>
+                          </div>
+                          
+                          {isCompleted && (
+                            <div className="flex items-center gap-1 text-xs text-green-700 font-medium">
+                              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                              Meta alcançada!
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Progresso temporal */}
+                        <div className="mt-2">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="text-xs text-gray-600">Tempo:</span>
+                            <span className="text-xs text-gray-500">
                               {daysRemaining > 0 ? `${daysRemaining} dias restantes` : 'Finalizado'}
                             </span>
-                            <span className="text-xs text-gray-500">{Math.round(progressPercentage)}%</span>
                           </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div className="w-full bg-gray-200 rounded-full h-1.5">
                             <div 
-                              className="h-2 rounded-full transition-all duration-300 bg-gray-800"
+                              className="h-1.5 rounded-full transition-all duration-300 bg-gray-400"
                               style={{ width: `${progressPercentage}%` }}
                             ></div>
                           </div>
                         </div>
 
-                        {/* Progresso do usuário */}
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-gray-600">Seu progresso:</span>
-                          <span className="font-medium text-gray-900">
-                            {challenge.user_progress || 0} / {challenge.goal_value} {challenge.goal_type}
-                          </span>
-                        </div>
-                        
                         {/* Participantes info */}
-                        <div className="flex items-center justify-between text-xs text-gray-500">
+                        <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
                           <span>{challenge.participant_count} participantes</span>
                           <span>por {challenge.creator?.username}</span>
                         </div>
@@ -1425,6 +1461,8 @@ const Dashboard = () => {
                         {/* Primary action button - full width on mobile */}
                         <button
                           onClick={async () => {
+                            if (isCompleted) return; // Não permitir completar se já foi completado
+                            
                             try {
                               // Incrementar o progresso do usuário no desafio
                               const currentProgress = challenge.user_progress || 0;
@@ -1437,9 +1475,23 @@ const Dashboard = () => {
                               // Adicionar notificação de erro se necessário
                             }
                           }}
-                          className="w-full sm:flex-1 px-3 sm:px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 bg-gray-900 text-white hover:bg-gray-800 shadow-sm hover:shadow-md transform hover:-translate-y-0.5"
+                          disabled={isCompleted}
+                          className={`w-full sm:flex-1 px-3 sm:px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 shadow-sm ${
+                            isCompleted
+                              ? 'bg-green-100 text-green-800 border border-green-300 cursor-not-allowed' 
+                              : 'bg-gray-900 text-white hover:bg-gray-800 hover:shadow-md transform hover:-translate-y-0.5'
+                          }`}
                         >
-                          Completar Hoje
+                          {isCompleted ? (
+                            <span className="flex items-center justify-center gap-2">
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                              Completado
+                            </span>
+                          ) : (
+                            'Completar Hoje'
+                          )}
                         </button>
                         
                         {/* Secondary button */}

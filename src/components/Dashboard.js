@@ -7,6 +7,7 @@ import ActivityFeed from './ActivityFeed';
 import FriendsSidebar from './FriendsSidebar';
 import Groups from './Groups';
 import Challenges from './Challenges';
+import AnalyticsDashboard from './AnalyticsDashboard';
 
 // Constantes para categorias e ícones
 const CATEGORIES = [
@@ -103,6 +104,7 @@ const Dashboard = () => {
   const [showChallenges, setShowChallenges] = useState(false);
   const [showChallengeDetail, setShowChallengeDetail] = useState(false);
   const [selectedChallenge, setSelectedChallenge] = useState(null);
+  const [showAnalytics, setShowAnalytics] = useState(false);
 
   // Verificar status da permissão de notificação
   useEffect(() => {
@@ -841,6 +843,17 @@ const Dashboard = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
                 </svg>
                 <span className="hidden sm:inline">Desafios</span>
+              </button>
+              
+              <button
+                onClick={() => setShowAnalytics(true)}
+                className="px-3 sm:px-4 py-2 text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 border border-indigo-200 rounded-lg transition-all duration-200 flex items-center gap-2"
+                title="Analytics"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <span className="hidden sm:inline">Analytics</span>
               </button>
             </div>
             
@@ -1978,6 +1991,28 @@ const Dashboard = () => {
           onClose={() => setShowChallengeDetail(false)}
           onUpdate={fetchActiveChallenges}
         />
+      )}
+
+      {/* Modal do Analytics Dashboard */}
+      {showAnalytics && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-7xl max-h-[95vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b border-gray-200">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900">Analytics Dashboard</h2>
+              <button
+                onClick={() => setShowAnalytics(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors p-1"
+              >
+                <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="overflow-y-auto max-h-[calc(95vh-80px)]">
+              <AnalyticsDashboard />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

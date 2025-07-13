@@ -324,6 +324,9 @@ func main() {
 	protected.HandleFunc("/challenges/{id}/progress", updateChallengeProgress).Methods("PUT")
 	protected.HandleFunc("/challenges/{id}/participants", getChallengeParticipants).Methods("GET")
 
+	// Analytics routes
+	protected.HandleFunc("/analytics", getAnalytics).Methods("GET")
+
 	// Configure CORS
 	c := cors.New(cors.Options{
 	AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -806,8 +809,25 @@ func calculateStreaks(db *sql.DB, habitID int) (int, int, error) {
     // Calcular current streak
     currentStreak := calculateCurrentStreak(dates)
     
-    // Calcular longest streak
-    longestStreak := calculateLongestStreak(dates)
+    // Calcular longest streak - implementação simples local
+    maxStreak := 1
+    currentStreakLocal := 1
+    
+    for i := 1; i < len(dates); i++ {
+        // Verificar se a data atual é consecutiva à anterior
+        expectedDate := dates[i-1].AddDate(0, 0, -1)
+        
+        if dates[i].Equal(expectedDate) {
+            currentStreakLocal++
+            if currentStreakLocal > maxStreak {
+                maxStreak = currentStreakLocal
+            }
+        } else {
+            currentStreakLocal = 1
+        }
+    }
+    
+    longestStreak := maxStreak
     
     return currentStreak, longestStreak, nil
 }
@@ -843,31 +863,6 @@ func calculateCurrentStreak(dates []time.Time) int {
     }
     
     return streak
-}
-
-func calculateLongestStreak(dates []time.Time) int {
-    if len(dates) == 0 {
-        return 0
-    }
-    
-    maxStreak := 1
-    currentStreak := 1
-    
-    for i := 1; i < len(dates); i++ {
-        // Verificar se a data atual é consecutiva à anterior
-        expectedDate := dates[i-1].AddDate(0, 0, -1)
-        
-        if dates[i].Equal(expectedDate) {
-            currentStreak++
-            if currentStreak > maxStreak {
-                maxStreak = currentStreak
-            }
-        } else {
-            currentStreak = 1
-        }
-    }
-    
-    return maxStreak
 }
 
 func createHabit(w http.ResponseWriter, r *http.Request) {

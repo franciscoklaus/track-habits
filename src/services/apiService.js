@@ -405,6 +405,13 @@ class ApiService {
   }
 
   // ============= HISTÓRICO DE METAS =============
+
+  // ============= ANALYTICS =============
+  
+  // Obter dados de analytics
+  async getAnalytics(period = 30) {
+    return await this.request(`/analytics?period=${period}`);
+  }
 }
 
 // Hook personalizado para usar o serviço

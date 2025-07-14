@@ -42,10 +42,18 @@ const AnalyticsDashboard = () => {
   };
 
   const renderActivityCalendar = () => {
-    if (!analytics || !analytics.activity_calendar) return null;
+    if (!analytics || !analytics.activity_calendar || analytics.activity_calendar.length === 0) {
+      return (
+        <div className="activity-calendar">
+          <h3>Calendário de Atividades</h3>
+          <div className="text-center py-8 text-gray-500">
+            <p>Nenhuma atividade registrada no período</p>
+          </div>
+        </div>
+      );
+    }
 
     const calendar = analytics.activity_calendar;
-    const maxCount = Math.max(...calendar.map(day => day.count), 1);
 
     return (
       <div className="activity-calendar">
@@ -53,11 +61,13 @@ const AnalyticsDashboard = () => {
         <div className="calendar-grid">
           {calendar.map((day, index) => (
             <div
-              key={index}
+              key={`${day.date}-${index}`}
               className={`calendar-day level-${day.level}`}
-              title={`${day.date}: ${day.count} atividades`}
+              title={`${new Date(day.date).toLocaleDateString('pt-BR')}: ${day.count} atividades`}
+              role="gridcell"
+              tabIndex={0}
             >
-              <span className="day-count">{day.count}</span>
+              <span className="day-count">{day.count || 0}</span>
             </div>
           ))}
         </div>
@@ -65,7 +75,7 @@ const AnalyticsDashboard = () => {
           <span>Menos</span>
           <div className="legend-squares">
             {[0, 1, 2, 3, 4].map(level => (
-              <div key={level} className={`legend-square level-${level}`}></div>
+              <div key={level} className={`legend-square level-${level}`} aria-label={`Nível ${level}`}></div>
             ))}
           </div>
           <span>Mais</span>
@@ -75,25 +85,34 @@ const AnalyticsDashboard = () => {
   };
 
   const renderHabitTrends = () => {
-    if (!analytics || !analytics.habit_trends) return null;
+    if (!analytics || !analytics.habit_trends || analytics.habit_trends.length === 0) {
+      return (
+        <div className="habit-trends">
+          <h3>Tendências de Hábitos</h3>
+          <div className="text-center py-8 text-gray-500">
+            <p>Nenhum hábito encontrado no período</p>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className="habit-trends">
         <h3>Tendências de Hábitos</h3>
         <div className="trends-list">
-          {analytics.habit_trends.map((trend, index) => (
-            <div key={index} className="trend-item">
+          {analytics.habit_trends.slice(0, 10).map((trend, index) => (
+            <div key={`${trend.habit_id}-${index}`} className="trend-item">
               <div className="trend-info">
-                <h4>{trend.habit_name}</h4>
-                <span className="category">{trend.category}</span>
+                <h4>{trend.habit_name || 'Hábito sem nome'}</h4>
+                <span className="category">{trend.category || 'Geral'}</span>
               </div>
               <div className="trend-stats">
-                <span className="total-count">{trend.total_count} total</span>
-                <span className="weekly-count">{trend.weekly_count} esta semana</span>
-                <span className={`trend-indicator ${trend.trend}`}>
+                <span className="total-count">{trend.total_count || 0} total</span>
+                <span className="weekly-count">{trend.weekly_count || 0} esta semana</span>
+                <span className={`trend-indicator ${trend.trend || 'stable'}`} role="img" aria-label={`Tendência ${trend.trend}`}>
                   {trend.trend === 'up' && '↗️'}
                   {trend.trend === 'down' && '↘️'}
-                  {trend.trend === 'stable' && '➡️'}
+                  {(trend.trend === 'stable' || !trend.trend) && '➡️'}
                 </span>
               </div>
             </div>

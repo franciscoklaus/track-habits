@@ -1327,221 +1327,244 @@ const Dashboard = () => {
         </div>
       )}
 
-        {/* Seção de Desafios Ativos */}
+        {/* Espaçamento adicional entre hábitos e desafios */}
+        <div className="my-12 sm:my-16"></div>
+
+        {/* Seção de Desafios */}
         {activeChallenges.length > 0 && (
           <div className="mb-8 sm:mb-12">
-            <div className="flex items-center justify-between mb-6 sm:mb-8">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2 sm:gap-3">
-                <span className="text-2xl sm:text-3xl">🏆</span>
-                Desafios Ativos
-              </h2>
-              <button
-                onClick={() => setShowChallenges(true)}
-                className="text-sm text-gray-600 hover:text-gray-900 font-medium transition-colors duration-200"
-              >
-                Ver todos
-              </button>
-            </div>
-            
-            {/* Mobile optimized challenges grid */}
-            <div className="grid gap-4 sm:gap-6 md:gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-              {activeChallenges.map(challenge => {
-                const startDate = new Date(challenge.start_date);
-                const endDate = new Date(challenge.end_date);
-                const now = new Date();
-                const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
-                const daysElapsed = Math.ceil((now - startDate) / (1000 * 60 * 60 * 24));
-                const daysRemaining = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
-                const progressPercentage = Math.min((daysElapsed / totalDays) * 100, 100);
-                
-                // Verificar se o desafio foi completado pelo usuário
-                const userProgress = challenge.user_progress || 0;
-                const isCompleted = userProgress >= challenge.goal_value;
-                const userProgressPercentage = Math.min((userProgress / challenge.goal_value) * 100, 100);
-                
-                return (
-                  <div key={challenge.id} className={`group rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border overflow-hidden ${
-                    isCompleted 
-                      ? 'bg-green-50 border-green-200 ring-2 ring-green-100' 
-                      : 'bg-white border-gray-100 hover:border-gray-200'
-                  }`}>
-                    {/* Mobile optimized challenge header */}
-                    <div className="p-4 sm:p-6 pb-3 sm:pb-4">
-                      <div className="flex items-start justify-between mb-3 sm:mb-4">
-                        <div className="flex-1 pr-2 sm:pr-4">
-                          <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
-                            <span className="text-xl sm:text-2xl">🎯</span>
-                            <div className="min-w-0 flex-1">
-                              <h3 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
-                                {challenge.name}
-                              </h3>
-                              <span className="text-xs text-gray-500 font-medium">
-                                Grupo: {challenge.group?.name}
-                              </span>
-                            </div>
-                          </div>
-                          {challenge.description && (
-                            <p className="text-gray-600 text-xs sm:text-sm leading-relaxed line-clamp-2 sm:line-clamp-3">
-                              {challenge.description}
-                            </p>
-                          )}
-                        </div>
-                        
-                        {/* Mobile optimized status badges */}
-                        <div className='flex flex-col gap-1 sm:gap-2 flex-shrink-0'>
-                          <span className={`px-2 py-0.5 text-xs font-medium rounded-full border text-center ${
-                            isCompleted 
-                              ? 'bg-green-100 text-green-800 border-green-300' 
-                              : 'bg-green-100 text-green-700 border-green-200'
-                          }`}>
-                            {isCompleted ? 'Completado' : 'Ativo'}
-                          </span>
-                          <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-purple-50 text-purple-700 border border-purple-200 text-center">
-                            {challenge.goal_value} {challenge.goal_type}
-                          </span>
-                        </div>
+            {/* Desafios Ativos */}
+            {(() => {
+              const activeChallenes = activeChallenges.filter(challenge => (challenge.user_progress || 0) < challenge.goal_value);
+              const completedChallenges = activeChallenges.filter(challenge => (challenge.user_progress || 0) >= challenge.goal_value);
+              
+              return (
+                <>
+                  {/* Seção de Desafios Ativos */}
+                  {activeChallenes.length > 0 && (
+                    <div className="mb-8">
+                      <div className="flex items-center mb-6 sm:mb-8">
+                        <h2 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2 sm:gap-3">
+                          <span className="text-2xl sm:text-3xl">🏆</span>
+                          Desafios Ativos
+                        </h2>
                       </div>
-
-                      {/* Mobile optimized goal info */}
-                      <div className="mt-3 sm:mt-4 p-2 sm:p-3 bg-gray-50 rounded-lg border border-gray-100">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs sm:text-sm font-medium text-gray-700">
-                            Meta: {challenge.habit_name}
-                          </span>
-                        </div>
-                        
-                        {/* Progresso do usuário */}
-                        <div className="mt-3 pt-3 border-t border-gray-200">
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="text-xs text-gray-600">Seu progresso:</span>
-                            <span className={`text-xs font-medium ${
-                              isCompleted ? 'text-green-700' : 'text-gray-900'
+                      
+                      {/* Mobile optimized challenges grid */}
+                      <div className="grid gap-4 sm:gap-6 md:gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                        {activeChallenes.map(challenge => {
+                          const startDate = new Date(challenge.start_date);
+                          const endDate = new Date(challenge.end_date);
+                          const now = new Date();
+                          const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+                          const daysElapsed = Math.ceil((now - startDate) / (1000 * 60 * 60 * 24));
+                          const daysRemaining = Math.ceil((endDate - now) / (1000 * 60 * 60 * 24));
+                          const progressPercentage = Math.min((daysElapsed / totalDays) * 100, 100);
+                          
+                          // Verificar se o desafio foi completado pelo usuário
+                          const userProgress = challenge.user_progress || 0;
+                          const isCompleted = userProgress >= challenge.goal_value;
+                          const userProgressPercentage = Math.min((userProgress / challenge.goal_value) * 100, 100);
+                          
+                          return (
+                            <div key={challenge.id} className={`group rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 border overflow-hidden ${
+                              isCompleted 
+                                ? 'bg-green-50 border-green-200 ring-2 ring-green-100' 
+                                : 'bg-white border-gray-100 hover:border-gray-200'
                             }`}>
-                              {userProgress} / {challenge.goal_value} {challenge.goal_type}
-                            </span>
-                          </div>
-                          
-                          {/* Barra de progresso do usuário */}
-                          <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
-                            <div 
-                              className={`h-2 rounded-full transition-all duration-300 ${
-                                isCompleted ? 'bg-green-500' : 'bg-blue-500'
-                              }`}
-                              style={{ width: `${userProgressPercentage}%` }}
-                            ></div>
-                          </div>
-                          
-                          {isCompleted && (
-                            <div className="flex items-center gap-1 text-xs text-green-700 font-medium">
-                              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                              Meta alcançada!
+                              {/* Mobile optimized challenge header */}
+                              <div className="p-4 sm:p-6 pb-3 sm:pb-4">
+                                <div className="flex items-start justify-between mb-3 sm:mb-4">
+                                  <div className="flex-1 pr-2 sm:pr-4">
+                                    <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
+                                      <span className="text-xl sm:text-2xl">🎯</span>
+                                      <div className="min-w-0 flex-1">
+                                        <h3 className="text-base sm:text-lg font-bold text-gray-900 leading-tight truncate">
+                                          {challenge.name}
+                                        </h3>
+                                        <span className="text-xs text-gray-500 font-medium">
+                                          Grupo: {challenge.group?.name}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    {challenge.description && (
+                                      <p className="text-gray-600 text-xs sm:text-sm leading-relaxed line-clamp-2 sm:line-clamp-3">
+                                        {challenge.description}
+                                      </p>
+                                    )}
+                                  </div>
+                                  
+                                  {/* Mobile optimized status badges */}
+                                  <div className='flex flex-col gap-1 sm:gap-2 flex-shrink-0'>
+                                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full border text-center ${
+                                      isCompleted 
+                                        ? 'bg-green-100 text-green-800 border-green-300' 
+                                        : 'bg-green-100 text-green-700 border-green-200'
+                                    }`}>
+                                      Ativo
+                                    </span>
+                                    <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-purple-50 text-purple-700 border border-purple-200 text-center">
+                                      {challenge.goal_value} {challenge.goal_type}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Mobile optimized goal info */}
+                                <div className="mt-3 sm:mt-4 p-2 sm:p-3 bg-gray-50 rounded-lg border border-gray-100">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-xs sm:text-sm font-medium text-gray-700">
+                                      Meta: {challenge.habit_name}
+                                    </span>
+                                  </div>
+                                  
+                                  {/* Progresso do usuário */}
+                                  <div className="mt-3 pt-3 border-t border-gray-200">
+                                    <div className="flex justify-between items-center mb-2">
+                                      <span className="text-xs text-gray-600">Seu progresso:</span>
+                                      <span className="text-xs font-medium text-gray-900">
+                                        {userProgress} / {challenge.goal_value} {challenge.goal_type}
+                                      </span>
+                                    </div>
+                                    
+                                    {/* Barra de progresso do usuário */}
+                                    <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                                      <div 
+                                        className="h-2 rounded-full transition-all duration-300 bg-blue-500"
+                                        style={{ width: `${userProgressPercentage}%` }}
+                                      ></div>
+                                    </div>
+                                  </div>
+
+                                  {/* Progresso temporal */}
+                                  <div className="mt-2">
+                                    <div className="flex justify-between items-center mb-2">
+                                      <span className="text-xs text-gray-600">Tempo:</span>
+                                      <span className="text-xs text-gray-500">
+                                        {daysRemaining > 0 ? `${daysRemaining} dias restantes` : 'Finalizado'}
+                                      </span>
+                                    </div>
+                                    <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                      <div 
+                                        className="h-1.5 rounded-full transition-all duration-300 bg-gray-400"
+                                        style={{ width: `${progressPercentage}%` }}
+                                      ></div>
+                                    </div>
+                                  </div>
+
+                                  {/* Participantes info */}
+                                  <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
+                                    <span>{challenge.participant_count} participantes</span>
+                                    <span>por {challenge.creator?.username}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Divider */}
+                              <div className="border-t border-gray-100"></div>
+
+                              {/* Mobile optimized actions */}
+                              <div className="p-3 sm:p-4 bg-gray-50/50">
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                  {/* Primary action button - full width on mobile */}
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        // Incrementar o progresso do usuário no desafio
+                                        const currentProgress = challenge.user_progress || 0;
+                                        await updateChallengeProgress(challenge.id, { 
+                                          progress: currentProgress + 1, 
+                                          notes: `Completado em ${new Date().toLocaleDateString('pt-BR')}` 
+                                        });
+                                      } catch (err) {
+                                        console.error('Erro ao completar desafio:', err);
+                                        // Adicionar notificação de erro se necessário
+                                      }
+                                    }}
+                                    className="w-full sm:flex-1 px-3 sm:px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 shadow-sm bg-gray-900 text-white hover:bg-gray-800 hover:shadow-md transform hover:-translate-y-0.5"
+                                  >
+                                    Completar Hoje
+                                  </button>
+                                  
+                                  {/* Secondary button */}
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => handleChallengeDetailClick(challenge)}
+                                      className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 hover:shadow-sm flex items-center justify-center"
+                                      title="Ver detalhes do desafio"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                          )}
-                        </div>
-
-                        {/* Progresso temporal */}
-                        <div className="mt-2">
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="text-xs text-gray-600">Tempo:</span>
-                            <span className="text-xs text-gray-500">
-                              {daysRemaining > 0 ? `${daysRemaining} dias restantes` : 'Finalizado'}
-                            </span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-1.5">
-                            <div 
-                              className="h-1.5 rounded-full transition-all duration-300 bg-gray-400"
-                              style={{ width: `${progressPercentage}%` }}
-                            ></div>
-                          </div>
-                        </div>
-
-                        {/* Participantes info */}
-                        <div className="flex items-center justify-between text-xs text-gray-500 mt-2">
-                          <span>{challenge.participant_count} participantes</span>
-                          <span>por {challenge.creator?.username}</span>
-                        </div>
+                          );
+                        })}
                       </div>
                     </div>
+                  )}
 
-                    {/* Divider */}
-                    <div className="border-t border-gray-100"></div>
-
-                    {/* Mobile optimized actions */}
-                    <div className="p-3 sm:p-4 bg-gray-50/50">
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        {/* Primary action button - full width on mobile */}
-                        <button
-                          onClick={async () => {
-                            if (isCompleted) return; // Não permitir completar se já foi completado
-                            
-                            try {
-                              // Incrementar o progresso do usuário no desafio
-                              const currentProgress = challenge.user_progress || 0;
-                              await updateChallengeProgress(challenge.id, { 
-                                progress: currentProgress + 1, 
-                                notes: `Completado em ${new Date().toLocaleDateString('pt-BR')}` 
-                              });
-                            } catch (err) {
-                              console.error('Erro ao completar desafio:', err);
-                              // Adicionar notificação de erro se necessário
-                            }
-                          }}
-                          disabled={isCompleted}
-                          className={`w-full sm:flex-1 px-3 sm:px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 shadow-sm ${
-                            isCompleted
-                              ? 'bg-green-100 text-green-800 border border-green-300 cursor-not-allowed' 
-                              : 'bg-gray-900 text-white hover:bg-gray-800 hover:shadow-md transform hover:-translate-y-0.5'
-                          }`}
-                        >
-                          {isCompleted ? (
-                            <span className="flex items-center justify-center gap-2">
-                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                              Completado
-                            </span>
-                          ) : (
-                            'Completar Hoje'
-                          )}
-                        </button>
+                  {/* Seção de Desafios Completados - Minimizada */}
+                  {completedChallenges.length > 0 && (
+                    <div className="mb-4">
+                      <details className="group">
+                        <summary className="cursor-pointer flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors">
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <span className="text-lg sm:text-xl">✅</span>
+                            <h3 className="text-base sm:text-lg font-semibold text-green-800">
+                              Desafios Completados ({completedChallenges.length})
+                            </h3>
+                          </div>
+                          <svg className="w-5 h-5 text-green-600 transform transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </summary>
                         
-                        {/* Secondary button */}
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleChallengeDetailClick(challenge)}
-                            className="flex-1 sm:flex-none px-3 sm:px-4 py-2.5 bg-white text-gray-700 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 hover:shadow-sm flex items-center justify-center"
-                            title="Ver detalhes do desafio"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
+                        <div className="mt-4 grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                          {completedChallenges.map(challenge => (
+                            <div key={challenge.id} className="bg-green-50 border border-green-200 rounded-lg p-4">
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="font-medium text-green-900 text-sm truncate flex-1">
+                                  {challenge.name}
+                                </h4>
+                                <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full font-medium ml-2">
+                                  Completo
+                                </span>
+                              </div>
+                              <p className="text-xs text-green-700 mb-2">
+                                Grupo: {challenge.group?.name}
+                              </p>
+                              <div className="flex items-center justify-between text-xs text-green-600">
+                                <span>{challenge.user_progress} / {challenge.goal_value} {challenge.goal_type}</span>
+                                <button
+                                  onClick={() => handleChallengeDetailClick(challenge)}
+                                  className="text-green-700 hover:text-green-900 font-medium"
+                                >
+                                  Ver detalhes
+                                </button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      </div>
+                      </details>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
         
         {/* Estado vazio para desafios ativos */}
         {!challengesLoading && activeChallenges.length === 0 && (
           <div className="mb-8 sm:mb-12">
-            <div className="flex items-center justify-between mb-6 sm:mb-8">
+            <div className="flex items-center mb-6 sm:mb-8">
               <h2 className="text-xl sm:text-2xl font-bold text-gray-900 flex items-center gap-2 sm:gap-3">
                 <span className="text-2xl sm:text-3xl">🏆</span>
-                Desafios Ativos
+                Desafios
               </h2>
-              <button
-                onClick={() => setShowChallenges(true)}
-                className="text-sm text-gray-600 hover:text-gray-900 font-medium transition-colors duration-200"
-              >
-                Explorar desafios
-              </button>
             </div>
             
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 sm:p-12 text-center">
